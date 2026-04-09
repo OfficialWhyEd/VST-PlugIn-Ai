@@ -487,6 +487,8 @@ cd gui && npm run build && cd ..
 
 ### Prerequisiti Specifici Linux (Ubuntu/Debian)
 
+⚠️ **Nota:** Questi prerequisiti sono per sistemi Linux (come il sistema di sviluppo attuale). Per Windows o macOS, vedere le sezioni successive.
+
 **Pacchetti APT necessari per JUCE:**
 ```bash
 sudo apt update
@@ -517,9 +519,30 @@ dpkg -l | grep libgl-dev
   xcode-select --install
   ```
 
-### Prerequisiti Windows
-- Visual Studio 2022 con "Desktop development with C++"
-- Windows SDK
+### Prerequisiti Windows (Sistema di Edo)
+
+⚠️ **Nota:** Questo è l'ambiente di sviluppo principale per Edo.
+
+**Prerequisiti necessari:**
+1. **Visual Studio 2022** con "Desktop development with C++"
+2. **Windows SDK** (incluso in Visual Studio)
+3. **CMake** >= 3.20 (download da cmake.org)
+4. **JUCE 7.0.12+** (download da juce.com)
+
+**Installazione Visual Studio:**
+- Download da: https://visualstudio.microsoft.com/
+- Selezionare "Desktop development with C++" workload
+- Includere Windows SDK
+
+**Setup JUCE:**
+1. Estrai in `C:\SDKs\JUCE` o percorso preferito
+2. Imposta variabile ambiente: `JUCE_ROOT=C:\SDKs\JUCE`
+
+**Verifica installazione:**
+```cmd
+cmake --version
+gcl --version
+```
 
 ---
 
