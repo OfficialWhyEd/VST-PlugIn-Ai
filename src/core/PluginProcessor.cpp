@@ -169,6 +169,12 @@ void OpenClawAudioProcessor::setOscPort(int port)
 }
 
 //==============================================================================
+juce::AudioProcessorEditor* OpenClawAudioProcessor::createEditor()
+{
+    return new OpenClawAudioProcessorEditor(*this);
+}
+
+//==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new OpenClawAudioProcessor();

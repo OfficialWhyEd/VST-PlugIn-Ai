@@ -44,7 +44,7 @@ target_include_directories(oscpack PUBLIC ${OSCPACK_ROOT})
 add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE ${NLOHMANN_JSON_ROOT}/single_include)
 
-# Plugin Definition
+# Plugin Definition (WebView disabled - GTK not available)
 juce_add_plugin(OpenClawVSTPlugin
     COMPANY_NAME "OpenClaw"
     PLUGIN_MANUFACTURER_CODE OpCl
@@ -54,11 +54,19 @@ juce_add_plugin(OpenClawVSTPlugin
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
     
-    FORMATS VST3 AU Standalone
+    FORMATS VST3 Standalone
     
     PRODUCT_NAME "OpenClaw VST Bridge AI"
     
     COPY_PLUGIN_AFTER_BUILD FALSE
+)
+
+# Disable WebView and extra GUI features that require GTK
+target_compile_definitions(OpenClawVSTPlugin PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
 # Source files

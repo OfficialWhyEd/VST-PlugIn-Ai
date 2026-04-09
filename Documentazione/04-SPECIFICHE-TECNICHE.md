@@ -593,6 +593,9 @@ cd gui && npm run build && cd ..
 
 ⚠️ **Nota:** Questi prerequisiti sono per sistemi Linux (come il sistema di sviluppo attuale). Per Windows o macOS, vedere le sezioni successive.
 
+**⚠️ IMPORTANTE - VST2 SDK Rimosso:**
+Steinberg ha rimosso VST2 SDK dalle distribuzioni recenti. Il plugin supporta solo **VST3** (standard moderno). Ableton Live, Reaper e tutti i DAW moderni supportano VST3.
+
 **Pacchetti APT necessari per JUCE:**
 ```bash
 sudo apt update
