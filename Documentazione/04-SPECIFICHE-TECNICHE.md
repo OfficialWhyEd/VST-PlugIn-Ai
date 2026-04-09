@@ -596,7 +596,8 @@ cd gui && npm run build && cd ..
 **Pacchetti APT necessari per JUCE:**
 ```bash
 sudo apt update
-sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev
+sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev \
+    libfreetype6-dev libxcomposite-dev mesa-common-dev libgl1-mesa-dev libcurl4-openssl-dev
 ```
 
 **Verifica installazione:**
@@ -614,6 +615,11 @@ dpkg -l | grep libgl-dev
 - `libxinerama-dev` → X11 Xinerama extension (per multi-monitor)
 - `libxcursor-dev` → X11 cursor extension (per custom cursor in UI)
 - `libgl-dev` → OpenGL (per rendering GUI accelerato)
+- `libfreetype6-dev` → Font rendering per JUCE GUI
+- `libxcomposite-dev` → X11 composite extension (per trasparenza)
+- `mesa-common-dev` → Mesa headers per OpenGL
+- `libgl1-mesa-dev` → Mesa OpenGL development
+- `libcurl4-openssl-dev` → HTTPS per download e API calls
 
 **Se mancanti:** Il build fallirà con errori tipo "cannot find -lasound" o "X11/Xlib.h: No such file or directory"
 
