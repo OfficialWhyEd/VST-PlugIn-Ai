@@ -8,7 +8,9 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-#include <JuceHeader.h>
+// Forward declarations for incomplete types
+class AiEngine {};
+class OscHandler {};
 
 //==============================================================================
 OpenClawAudioProcessor::OpenClawAudioProcessor()

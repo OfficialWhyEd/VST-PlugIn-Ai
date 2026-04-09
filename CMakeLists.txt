@@ -33,9 +33,10 @@ add_library(oscpack STATIC
     ${OSCPACK_ROOT}/osc/OscOutboundPacketStream.cpp
     ${OSCPACK_ROOT}/osc/OscReceivedElements.cpp
     ${OSCPACK_ROOT}/osc/OscTypes.cpp
+    ${OSCPACK_ROOT}/osc/OscPrintReceivedElements.cpp
     ${OSCPACK_ROOT}/ip/IpEndpointName.cpp
-    ${OSCPACK_ROOT}/ip/UdpSocket.cpp
-    ${OSCPACK_ROOT}/ip/NetworkingUtils.cpp
+    ${OSCPACK_ROOT}/ip/posix/NetworkingUtils.cpp
+    ${OSCPACK_ROOT}/ip/posix/UdpSocket.cpp
 )
 target_include_directories(oscpack PUBLIC ${OSCPACK_ROOT})
 
