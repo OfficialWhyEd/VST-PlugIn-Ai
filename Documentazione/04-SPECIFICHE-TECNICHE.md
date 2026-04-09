@@ -698,6 +698,9 @@ project(OpenClaw-VST-Plugin)
 # JUCE
 add_subdirectory(${JUCE_ROOT} JUCE)
 
+# IMPORTANTE: VST2 SDK non è più disponibile (Steinberg rimosso)
+# Usiamo solo VST3 (standard moderno supportato da tutti i DAW)
+
 # Plugin
 juce_add_plugin(OpenClawVSTPlugin
     COMPANY_NAME "OpenClaw"
@@ -706,31 +709,41 @@ juce_add_plugin(OpenClawVSTPlugin
     NEEDS_MIDI_OUTPUT TRUE
     PLUGIN_MANUFACTURER_CODE OpCl
     PLUGIN_CODE OcAI
-    FORMATS VST3 AU Standalone
+    FORMATS VST3 Standalone      # VST3 only - no VST2
     PRODUCT_NAME "OpenClaw VST Bridge AI"
+)
+
+# Disabilita VST2 fallback (richiede SDK non disponibile)
+target_compile_definitions(OpenClawVSTPlugin PRIVATE
+    JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
 target_sources(OpenClawVSTPlugin
     PRIVATE
-        src/PluginProcessor.cpp
-        src/PluginEditor.cpp
+        src/core/PluginProcessor.cpp
+        src/core/PluginEditor.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
-        src/ui/WebViewBridge.cpp
 )
 
 target_link_libraries(OpenClawVSTPlugin
     PRIVATE
         juce::juce_audio_utils
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
+        juce::juce_audio_processors
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics
         oscpack
         nlohmann_json
 )
 
 # Include directories
 target_include_directories(OpenClawVSTPlugin PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
 )
 ```
 
