@@ -477,13 +477,51 @@ cd gui && npm run build && cd ..
 
 ## 🛠️ Setup Sviluppo Ambiente
 
-### Prerequisiti
+### Prerequisiti Cross-Platform
 - CMake >= 3.20
 - JUCE 7.0.12+ (download da juce.com)
 - Compilatore:
   - Linux: `gcc` (>= 11) o `clang` (>= 14)
   - macOS: Xcode Command Line Tools
   - Windows: Visual Studio 2022
+
+### Prerequisiti Specifici Linux (Ubuntu/Debian)
+
+**Pacchetti APT necessari per JUCE:**
+```bash
+sudo apt update
+sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl-dev
+```
+
+**Verifica installazione:**
+```bash
+# Dovrebbero mostrare versione installata
+dpkg -l | grep libasound2-dev
+dpkg -l | grep libx11-dev
+dpkg -l | grep libgl-dev
+```
+
+**Note:**
+- `libasound2-dev` → ALSA audio backend (necessario per audio I/O)
+- `libx11-dev` → X11 windowing system (base per GUI)
+- `libxrandr-dev` → X11 RandR extension (per monitor/resolution handling)
+- `libxinerama-dev` → X11 Xinerama extension (per multi-monitor)
+- `libxcursor-dev` → X11 cursor extension (per custom cursor in UI)
+- `libgl-dev` → OpenGL (per rendering GUI accelerato)
+
+**Se mancanti:** Il build fallirà con errori tipo "cannot find -lasound" o "X11/Xlib.h: No such file or directory"
+
+### Prerequisiti macOS
+- Xcode Command Line Tools:
+  ```bash
+  xcode-select --install
+  ```
+
+### Prerequisiti Windows
+- Visual Studio 2022 con "Desktop development with C++"
+- Windows SDK
+
+---
 
 ### Step 1: Download e Setup JUCE (1 ora)
 1. Scarica JUCE da https://juce.com/get-juce
