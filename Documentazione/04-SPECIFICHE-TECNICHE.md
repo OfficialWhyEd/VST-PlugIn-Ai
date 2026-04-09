@@ -103,17 +103,22 @@ window.addEventListener('message', (event) => {
 
 ---
 
-### 3. AI Engine: Ollama Local + Fallback Cloud
+### 3. AI Engine: Multi-Provider con API Key
 
 **Architettura:**
 ```
 User input
     ↓
-[AI Router]
+[AI Router - Provider Selection]
+    ↓
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│ Ollama Local │  Gemini API  │  Anthropic   │   OpenAI     │
+│ (default)    │  (API key)   │  (API key)   │  (API key)   │
+└──────────────┴──────────────┴──────────────┴──────────────┘
     ↓
 ┌──────────────┬──────────────┬──────────────┐
-│ Ollama Local │  Gemini API  │  OpenAI API  │
-│ (default)    │  (fallback)  │  (backup)    │
+│ OpenRouter   │    Groq      │   Altri      │
+│ (API key)    │  (API key)   │  (API key)   │
 └──────────────┴──────────────┴──────────────┘
     ↓
 [Memory Layer]
@@ -121,10 +126,109 @@ User input
 Response to user
 ```
 
+**Provider Supportati:**
+
+| Provider | Tipo | API Key | Modelli Consigliati |
+|----------|------|---------|-------------------|
+| **Ollama** | Locale | N/A | `llama3.1:8b`, `llama3.2`, `mistral` |
+| **Gemini** | Cloud | `GEMINI_API_KEY` | `gemini-1.5-flash`, `gemini-1.5-pro` |
+| **Anthropic** | Cloud | `ANTHROPIC_API_KEY` | `claude-3-5-sonnet`, `claude-3-haiku` |
+| **OpenAI** | Cloud | `OPENAI_API_KEY` | `gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo` |
+| **OpenRouter** | Cloud | `OPENROUTER_API_KEY` | Accesso a 100+ modelli |
+| **Groq** | Cloud | `GROQ_API_KEY` | `llama-3.1-70b`, `mixtral-8x7b` |
+
+**Configurazione API Key:**
+```json
+{
+  "ai": {
+    "defaultProvider": "ollama",
+    "fallbackOrder": ["ollama", "gemini", "anthropic", "openai"],
+    "providers": {
+      "ollama": {
+        "enabled": true,
+        "baseUrl": "http://localhost:11434",
+        "model": "llama3.1:8b"
+      },
+      "gemini": {
+        "enabled": true,
+        "apiKey": "${GEMINI_API_KEY}",
+        "model": "gemini-1.5-flash"
+      },
+      "anthropic": {
+        "enabled": true,
+        "apiKey": "${ANTHROPIC_API_KEY}",
+        "model": "claude-3-5-sonnet"
+      },
+      "openai": {
+        "enabled": true,
+        "apiKey": "${OPENAI_API_KEY}",
+        "model": "gpt-4o-mini"
+      },
+      "openrouter": {
+        "enabled": true,
+        "apiKey": "${OPENROUTER_API_KEY}",
+        "model": "anthropic/claude-3.5-sonnet"
+      },
+      "groq": {
+        "enabled": true,
+        "apiKey": "${GROQ_API_KEY}",
+        "model": "llama-3.1-70b-versatile"
+      }
+    }
+  }
+}
+```
+
+**Implementazione C++:**
+```cpp
+class AiEngine
+{
+public:
+    enum class Provider { Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq };
+    
+    struct Config {
+        Provider provider;
+        juce::String apiKey;
+        juce::String model;
+        juce::String baseUrl;
+        int timeoutMs = 10000;
+    };
+    
+    AiEngine(const Config& config);
+    
+    // Send prompt to AI
+    juce::String sendPrompt(const juce::String& prompt);
+    
+    // Set active provider
+    void setProvider(Provider provider);
+    
+    // Get available providers
+    juce::StringArray getAvailableProviders() const;
+    
+private:
+    Config config;
+    std::unique_ptr<juce::URLSession> session;
+    
+    // Provider-specific implementations
+    juce::String callOllama(const juce::String& prompt);
+    juce::String callGemini(const juce::String& prompt);
+    juce::String callAnthropic(const juce::String& prompt);
+    juce::String callOpenAI(const juce::String& prompt);
+    juce::String callOpenRouter(const juce::String& prompt);
+    juce::String callGroq(const juce::String& prompt);
+};
+```
+
+**UI per Gestione API Key:**
+- Settings panel con campi per ogni provider
+- API key salvate in config sicuro (non in chiaro)
+- Test button per verificare connessione
+- Fallback automatico se provider non disponibile
+
 **Modelli Consigliati:**
-- **Primario:** `llama3.1:8b` (4-bit) - 5GB RAM, 200ms response
-- **Fallback:** `gemini-1.5-flash` - cloud, sub-second
-- **Backup:** `gpt-4o-mini` - cloud, fallback
+- **Primario:** `llama3.1:8b` (Ollama locale) - 4GB RAM, 200ms response
+- **Fallback:** `gemini-1.5-flash` (Gemini) - cloud, sub-second
+- **Backup:** `gpt-4o-mini` (OpenAI) - cloud, fallback
 
 **System Prompt:**
 ```
