@@ -547,14 +547,35 @@ gcl --version
 ---
 
 ### Step 1: Download e Setup JUCE (1 ora)
+
+#### Linux/macOS
 1. Scarica JUCE da https://juce.com/get-juce
-2. Estrai in `/home/carlo/SDKs/JUCE` (o percorso preferito)
+2. Estrai in `/home/carlo/SDKs/JUCE` (Linux) o `/Users/edo/SDKs/JUCE` (macOS)
 3. Configura environment:
    ```bash
-   export JUCE_ROOT="/home/carlo/SDKs/JUCE"
+   export JUCE_ROOT="/home/carlo/SDKs/JUCE"  # Linux
+   # oppure
+   export JUCE_ROOT="/Users/edo/SDKs/JUCE"  # macOS
    ```
 
+#### Windows (Edo)
+1. Scarica JUCE da https://juce.com/get-juce
+2. Estrai in `C:\SDKs\JUCE` o percorso preferito
+3. Imposta variabile ambiente:
+   - Apri "System Properties" > "Environment Variables"
+   - Aggiungi nuova variabile utente:
+     - Nome: `JUCE_ROOT`
+     - Valore: `C:\SDKs\JUCE`
+   - Oppure da Command Prompt (amministratore):
+     ```cmd
+     setx JUCE_ROOT "C:\SDKs\JUCE" /M
+     ```
+
+---
+
 ### Step 2: Setup Progetto CMake (1 giorno)
+
+#### Linux/macOS
 Crea `CMakeLists.txt` nella root:
 
 ```cmake
@@ -600,10 +621,30 @@ target_include_directories(OpenClawVSTPlugin PRIVATE
 )
 ```
 
+#### Windows (Edo)
+Lo stesso `CMakeLists.txt` funziona, ma:
+- Assicurarsi che `JUCE_ROOT` sia impostato come variabile ambiente
+- Usare Visual Studio 2022 per aprire la soluzione generata
+
+---
+
 ### Step 3: Creare Struttura Cartelle (30 minuti)
+
+#### Linux/macOS
 ```bash
 mkdir -p src/{core,osc,ai,ui,utils}
 ```
+
+#### Windows (Edo)
+```cmd
+mkdir src\core
+mkdir src\osc
+mkdir src\ai
+mkdir src\ui
+mkdir src\utils
+```
+
+---
 
 ### Step 4: Plugin Skeleton (2 giorni)
 
@@ -716,6 +757,8 @@ juce::AudioProcessorEditor* OpenClawAudioProcessor::createEditor()
 ```
 
 ### Step 5: Build e Test (1 giorno)
+
+#### Linux
 ```bash
 # Configure
 cmake -B build -DJUCE_ROOT="/home/carlo/SDKs/JUCE"
@@ -724,8 +767,34 @@ cmake -B build -DJUCE_ROOT="/home/carlo/SDKs/JUCE"
 cmake --build build --config Release
 
 # Test
-# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton
+# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton/Reaper
 ```
+
+#### Windows (Edo)
+```cmd
+# Configure (da Developer Command Prompt per VS2022)
+cmake -B build -DJUCE_ROOT=C:\SDKs\JUCE -G "Visual Studio 17 2022"
+
+# Build
+cmake --build build --config Release
+
+# Test
+# Carica build\OpenClawVSTPlugin_artefacts\VST3\OpenClawVSTPlugin.vst3 in Ableton/Reaper
+```
+
+#### macOS
+```bash
+# Configure
+cmake -B build -DJUCE_ROOT=/Users/edo/SDKs/JUCE -G "Xcode"
+
+# Build
+cmake --build build --config Release
+
+# Test
+# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton/Logic Pro
+```
+
+---
 
 ### Step 6: OSC Handler Stub (3 giorni)
 Crea `src/osc/OscHandler.h` e `OscHandler.cpp` con implementazione base.
