@@ -475,6 +475,230 @@ cd gui && npm run build && cd ..
 
 ---
 
+## 🛠️ Setup Sviluppo Ambiente
+
+### Prerequisiti
+- CMake >= 3.20
+- JUCE 7.0.12+ (download da juce.com)
+- Compilatore:
+  - Linux: `gcc` (>= 11) o `clang` (>= 14)
+  - macOS: Xcode Command Line Tools
+  - Windows: Visual Studio 2022
+
+### Step 1: Download e Setup JUCE (1 ora)
+1. Scarica JUCE da https://juce.com/get-juce
+2. Estrai in `/home/carlo/SDKs/JUCE` (o percorso preferito)
+3. Configura environment:
+   ```bash
+   export JUCE_ROOT="/home/carlo/SDKs/JUCE"
+   ```
+
+### Step 2: Setup Progetto CMake (1 giorno)
+Crea `CMakeLists.txt` nella root:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(OpenClaw-VST-Plugin)
+
+# JUCE
+add_subdirectory(${JUCE_ROOT} JUCE)
+
+# Plugin
+juce_add_plugin(OpenClawVSTPlugin
+    COMPANY_NAME "OpenClaw"
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT TRUE
+    PLUGIN_MANUFACTURER_CODE OpCl
+    PLUGIN_CODE OcAI
+    FORMATS VST3 AU Standalone
+    PRODUCT_NAME "OpenClaw VST Bridge AI"
+)
+
+target_sources(OpenClawVSTPlugin
+    PRIVATE
+        src/PluginProcessor.cpp
+        src/PluginEditor.cpp
+        src/osc/OscHandler.cpp
+        src/ai/AiEngine.cpp
+        src/ui/WebViewBridge.cpp
+)
+
+target_link_libraries(OpenClawVSTPlugin
+    PRIVATE
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        oscpack
+        nlohmann_json
+)
+
+# Include directories
+target_include_directories(OpenClawVSTPlugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+```
+
+### Step 3: Creare Struttura Cartelle (30 minuti)
+```bash
+mkdir -p src/{core,osc,ai,ui,utils}
+```
+
+### Step 4: Plugin Skeleton (2 giorni)
+
+#### `src/core/PluginProcessor.h`
+```cpp
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include "../osc/OscHandler.h"
+#include "../ai/AiEngine.h"
+
+class OpenClawAudioProcessor : public juce::AudioProcessor
+{
+public:
+    OpenClawAudioProcessor();
+    ~OpenClawAudioProcessor() override;
+
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+    void releaseResources() override;
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
+
+    const juce::String getName() const override { return "OpenClaw VST Bridge AI"; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return true; }
+
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+
+private:
+    std::unique_ptr<OscHandler> oscHandler;
+    std::unique_ptr<AiEngine> aiEngine;
+    juce::AudioProcessorValueTreeState parameters;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenClawAudioProcessor)
+};
+```
+
+#### `src/core/PluginProcessor.cpp`
+```cpp
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+OpenClawAudioProcessor::OpenClawAudioProcessor()
+    : parameters(*this, nullptr, "Parameters", createParameterLayout())
+{
+    oscHandler = std::make_unique<OscHandler>(9000);
+    aiEngine = std::make_unique<AiEngine>();
+}
+
+OpenClawAudioProcessor::~OpenClawAudioProcessor() = default;
+
+juce::AudioProcessorValueTreeState::ParameterLayout OpenClawAudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "gain1", "Gain 1", -60.0f, 12.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "gain2", "Gain 2", -60.0f, 12.0f, 0.0f));
+    // ... altri 6 parametri
+
+    return { params.begin(), params.end() };
+}
+
+void OpenClawAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+    oscHandler->start();
+}
+
+void OpenClawAudioProcessor::releaseResources()
+{
+    oscHandler->stop();
+}
+
+void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+    auto totalNumInputChannels = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear(i, 0, buffer.getNumSamples());
+
+    // Apply gain from parameter 1
+    auto* gainParam = parameters.getRawParameterValue("gain1");
+    buffer.applyGain(juce::Decibels::decibelsToGain(gainParam->load()));
+}
+
+void OpenClawAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    auto state = parameters.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
+}
+
+void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState.get() != nullptr && xmlState->hasTagName(parameters.state.getType()))
+    {
+        parameters.replaceState(juce::ValueTree::fromXml(*xmlState));
+    }
+}
+
+juce::AudioProcessorEditor* OpenClawAudioProcessor::createEditor()
+{
+    return new OpenClawAudioProcessorEditor(*this);
+}
+```
+
+### Step 5: Build e Test (1 giorno)
+```bash
+# Configure
+cmake -B build -DJUCE_ROOT="/home/carlo/SDKs/JUCE"
+
+# Build
+cmake --build build --config Release
+
+# Test
+# Carica build/OpenClawVSTPlugin_artefacts/VST3/OpenClawVSTPlugin.vst3 in Ableton
+```
+
+### Step 6: OSC Handler Stub (3 giorni)
+Crea `src/osc/OscHandler.h` e `OscHandler.cpp` con implementazione base.
+
+### Step 7: AI Engine Stub (2 giorni)
+Crea `src/ai/AiEngine.h` e `AiEngine.cpp` con connessione Ollama.
+
+---
+
+## 📊 Timeline Setup Completa
+
+| Step | Durata | Deliverable |
+|------|--------|-------------|
+| Prerequisiti | 1 ora | Toolchain installato |
+| Setup CMake | 1 giorno | CMakeLists.txt funzionante |
+| Skeleton plugin | 2 giorni | Plugin carica in DAW |
+| Build & test | 1 giorno | VST3 funzionante |
+| OSC stub | 3 giorni | Comunicazione OSC base |
+| AI stub | 2 giorni | Connessione Ollama |
+| **Total** | **~10 giorni** | **Plugin base funzionante** |
+
+---
+
+## 🚀 Prossimi Step Dopo Setup
+
+1. **UI React** (1 settimana)
+2. **Auto-mapping** (1 settimana)
+3. **Control history** (1 settimana)
+4. **Animations** (3 giorni)
+
+---
+
+*Questa sezione è da aggiungere a `04-SPECIFICHE-TECNICHE.md`.*
+
 ## 📊 Performance Targets
 
 | Metric | Target | Test |
