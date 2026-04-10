@@ -1,5 +1,7 @@
 # OpenClaw VST Bridge AI
 
+**⚠️ IMPORTANTE: Leggi prima `WORKFLOW.md` per le regole di collaborazione tra Aura e Heartbroken.**
+
 AI-powered VST3 plugin for DAW control via OSC and MIDI.
 
 ## Quick Start
