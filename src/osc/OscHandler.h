@@ -1,10 +1,4 @@
 /*
-<<<<<<< HEAD
-   ==============================================================================
-   OscHandler.h
-   OpenClaw VST Bridge AI - OSC Communication Handler
-   ==============================================================================
-=======
   ==============================================================================
   OscHandler.h
   OpenClaw VST Bridge AI - OSC Communication Handler
@@ -14,15 +8,10 @@
   
   Phase 1: Receive-only (listen + log)
   ==============================================================================
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 */
 
 #pragma once
 
-<<<<<<< HEAD
-#include <JuceHeader.h>
-#include <functional>
-=======
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -31,13 +20,6 @@
 #include <atomic>
 #include <map>
 
-// Forward declare oscpack types to avoid header conflicts with JUCE
-namespace osc {
-    class ReceivedMessage;
-    class ReceivedPacket;
-}
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
-
 class OscHandler
 {
 public:
@@ -45,6 +27,9 @@ public:
     /** Callback type for incoming OSC messages */
     using OscCallback = std::function<void(const juce::String& address, float value)>;
     using OscStringCallback = std::function<void(const juce::String& address, const juce::String& value)>;
+    
+    // Legacy callback type for backward compatibility
+    using MessageCallback = std::function<void(const juce::String&, const juce::var&)>;
     
     //==============================================================================
     OscHandler(int port = 9000);
@@ -61,18 +46,12 @@ public:
     void sendMessage(const juce::String& address, float value);
     void sendMessage(const juce::String& address, const juce::String& value);
     void sendMessage(const juce::String& address, int value);
-<<<<<<< HEAD
-    
-    // Callback for incoming messages
-    using MessageCallback = std::function<void(const juce::String&, const juce::var&)>;
-    void setMessageCallback(MessageCallback callback);
-=======
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
     
     //==============================================================================
     /** Set callbacks for incoming messages */
     void setCallback(OscCallback callback);
     void setStringCallback(OscStringCallback callback);
+    void setMessageCallback(MessageCallback callback);  // Legacy support
     
     //==============================================================================
     /** Set the OSC port (restarts listener if running) */
@@ -98,15 +77,6 @@ public:
 private:
     //==============================================================================
     int port;
-<<<<<<< HEAD
-    bool running = false;
-    juce::DatagramSocket socket;
-    MessageCallback messageCallback;
-    std::unique_ptr<juce::Thread> receiverThread;
-    
-    void receiverThreadFunction();
-    static void parseOscMessage(const juce::String& address, juce::MemoryBlock& data, MessageCallback callback);
-=======
     std::atomic<bool> running{false};
     std::atomic<bool> connected{false};
     std::atomic<bool> learnMode{false};
@@ -129,6 +99,7 @@ private:
     /** Callbacks */
     OscCallback callback;
     OscStringCallback stringCallback;
+    MessageCallback messageCallback;  // Legacy
     
     //==============================================================================
     /** Message log (thread-safe via lock) */
@@ -141,5 +112,4 @@ private:
     std::unique_ptr<juce::DatagramSocket> socket;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscHandler)
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 };

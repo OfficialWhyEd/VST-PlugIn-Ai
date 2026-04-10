@@ -1,10 +1,4 @@
 /*
-<<<<<<< HEAD
-   ==============================================================================
-   OscHandler.cpp
-   OpenClaw VST Bridge AI - OSC Communication Handler Implementation
-   ==============================================================================
-=======
   ==============================================================================
   OscHandler.cpp
   OpenClaw VST Bridge AI - OSC Communication Handler Implementation
@@ -17,7 +11,6 @@
   
   Multipiattaforma: funziona su Linux, Windows, macOS
   ==============================================================================
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 */
 
 #include "OscHandler.h"
@@ -36,27 +29,6 @@ OscHandler::~OscHandler()
 //==============================================================================
 void OscHandler::start()
 {
-<<<<<<< HEAD
-    if (running)
-        return;
-        
-    running = true;
-    
-    // Bind to localhost only for security
-    juce::SocketAddress bindAddress("127.0.0.1", port);
-    
-    if (socket.bindTo(bindAddress, true))
-    {
-        // Start receiver thread
-        receiverThread = std::make_unique<juce::Thread>("OSC Receiver");
-        receiverThread->startThread([this] { receiverThreadFunction(); });
-    }
-    else
-    {
-        running = false;
-        // TODO: Log error - could not bind to port
-    }
-=======
     if (running.load())
         return; // Already running
     
@@ -77,26 +49,10 @@ void OscHandler::start()
     
     // Start listener thread
     listenerThread = std::make_unique<std::thread>([this]() { listenerLoop(); });
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 }
 
 void OscHandler::stop()
 {
-<<<<<<< HEAD
-    if (!running)
-        return;
-        
-    running = false;
-    
-    if (receiverThread)
-    {
-        receiverThread->signalThreadShouldExit();
-        receiverThread->waitForThreadToExit(-1); // Wait indefinitely
-        receiverThread.reset();
-    }
-    
-    socket.close();
-=======
     if (!running.load())
         return;
     
@@ -116,7 +72,6 @@ void OscHandler::stop()
     
     socket.reset();
     addToLog("[OSC] Stopped");
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 }
 
 //==============================================================================
@@ -222,6 +177,8 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
     
     // Parse arguments based on type tag
     const char* ptr = arguments;
+    juce::var firstValue;  // For legacy callback
+    bool hasValue = false;
     
     for (int i = 0; i < typeTag.length() && ptr < arguments + argSize; i++)
     {
@@ -243,6 +200,13 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 
                 addToLog("[OSC] " + address + " → " + juce::String(value, 3));
                 
+                // Store for legacy callback
+                if (!hasValue)
+                {
+                    firstValue = value;
+                    hasValue = true;
+                }
+                
                 // Call callback
                 if (callback)
                     callback(address, value);
@@ -260,6 +224,13 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 int32_t value = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
                 
                 addToLog("[OSC] " + address + " → " + juce::String(value));
+                
+                // Store for legacy callback
+                if (!hasValue)
+                {
+                    firstValue = value;
+                    hasValue = true;
+                }
                 
                 // Call callback with float conversion
                 if (callback)
@@ -279,6 +250,13 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 
                 addToLog("[OSC] " + address + " → \"" + str + "\"");
                 
+                // Store for legacy callback
+                if (!hasValue)
+                {
+                    firstValue = str;
+                    hasValue = true;
+                }
+                
                 if (stringCallback)
                     stringCallback(address, str);
                 
@@ -295,31 +273,15 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 break;
         }
     }
+    
+    // Legacy callback support
+    if (messageCallback && hasValue)
+        messageCallback(address, firstValue);
 }
 
 //==============================================================================
 void OscHandler::sendMessage(const juce::String& address, float value)
 {
-<<<<<<< HEAD
-    if (!running)
-        return;
-        
-    juce::MemoryBlock buffer;
-    juce::MemoryOutputStream mo(buffer, true);
-    
-    mo.write("<");
-    mo.write(address.toRawUTF8());
-    mo.write(">f");
-    mo.writeFloat(value);
-    
-    // Add padding to 4-byte boundary
-    int padding = (4 - (buffer.getSize() % 4)) % 4;
-    for (int i = 0; i < padding; ++i)
-        mo.writeByte(0);
-        
-    juce::SocketAddress destAddr("127.0.0.1", port);
-    socket.write(destAddr, buffer.getData(), buffer.getSize());
-=======
     if (!socket || !connected.load())
     {
         addToLog("[OSC] ERROR: Not connected, cannot send");
@@ -329,32 +291,10 @@ void OscHandler::sendMessage(const juce::String& address, float value)
     // Phase 2: implement sending
     // For now, just log
     addToLog("[OSC] SEND (not implemented): " + address + " → " + juce::String(value, 3));
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 }
 
 void OscHandler::sendMessage(const juce::String& address, const juce::String& value)
 {
-<<<<<<< HEAD
-    if (!running)
-        return;
-        
-    juce::MemoryBlock buffer;
-    juce::MemoryOutputStream mo(buffer, true);
-    
-    mo.write("<");
-    mo.write(address.toRawUTF8());
-    mo.write(">s");
-    mo.writeUTF8(value);
-    
-    // Add null terminator and padding to 4-byte boundary
-    mo.writeByte(0);
-    int padding = (4 - (buffer.getSize() % 4)) % 4;
-    for (int i = 0; i < padding; ++i)
-        mo.writeByte(0);
-        
-    juce::SocketAddress destAddr("127.0.0.1", port);
-    socket.write(destAddr, buffer.getData(), buffer.getSize());
-=======
     if (!socket || !connected.load())
     {
         addToLog("[OSC] ERROR: Not connected, cannot send");
@@ -363,94 +303,10 @@ void OscHandler::sendMessage(const juce::String& address, const juce::String& va
     
     // Phase 2: implement sending
     addToLog("[OSC] SEND (not implemented): " + address + " → \"" + value + "\"");
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 }
 
 void OscHandler::sendMessage(const juce::String& address, int value)
 {
-<<<<<<< HEAD
-    if (!running)
-        return;
-        
-    juce::MemoryBlock buffer;
-    juce::MemoryOutputStream mo(buffer, true);
-    
-    mo.write("<");
-    mo.write(address.toRawUTF8());
-    mo.write(">i");
-    mo.writeInt32(value);
-    
-    // Add padding to 4-byte boundary
-    int padding = (4 - (buffer.getSize() % 4)) % 4;
-    for (int i = 0; i < padding; ++i)
-        mo.writeByte(0);
-        
-    juce::SocketAddress destAddr("127.0.0.1", port);
-    socket.write(destAddr, buffer.getData(), buffer.getSize());
-}
-
-void OscHandler::setMessageCallback(MessageCallback callback)
-{
-    messageCallback = callback;
-}
-
-void OscHandler::receiverThreadFunction()
-{
-    juce::MemoryBuffer buffer(1024); // 1KB buffer for OSC messages
-    
-    while (!threadShouldExit() && running)
-    {
-        juce::SocketAddress sourceAddress;
-        int bytesReceived = socket.read(sourceAddress, buffer.getData(), buffer.getSize(), 0);
-        
-        if (bytesReceived > 0)
-        {
-            buffer.setSize(bytesReceived);
-            
-            // Simple OSC parsing - look for null-terminated address
-            const char* data = static_cast<const char*>(buffer.getData());
-            const char* end = data + bytesReceived;
-            
-            // Find address end (null terminator)
-            const char* addrEnd = std::find(data, end, '\0');
-            if (addrEnd != end)
-            {
-                juce::String address(data, static_cast<size_t>(addrEnd - data));
-                
-                // Skip null terminator
-                const char* argsStart = addrEnd + 1;
-                
-                // Align to 4-byte boundary
-                intptr_t addrOffset = addrEnd - data + 1;
-                int padding = (4 - (addrOffset % 4)) % 4;
-                const char* alignedArgs = argsStart + padding;
-                
-                if (alignedArgs < end)
-                {
-                    // For now, just pass the raw data - more sophisticated parsing could be added
-                    juce::MemoryBlock argData(alignedArgs, end - alignedArgs);
-                    if (messageCallback)
-                        messageCallback(address, argData);
-                }
-            }
-        }
-        else if (bytesReceived < 0)
-        {
-            // Error or disconnection
-            break;
-        }
-        
-        // Small sleep to prevent hogging CPU
-        juce::Thread::sleep(1);
-    }
-}
-
-void OscHandler::parseOscMessage(const juce::String& address, juce::MemoryBlock& data, MessageCallback callback)
-{
-    // This is kept for compatibility but the actual parsing is done in receiverThreadFunction
-    if (callback)
-        callback(address, data);
-=======
     sendMessage(address, static_cast<float>(value));
 }
 
@@ -463,6 +319,11 @@ void OscHandler::setCallback(OscCallback cb)
 void OscHandler::setStringCallback(OscStringCallback cb)
 {
     stringCallback = std::move(cb);
+}
+
+void OscHandler::setMessageCallback(MessageCallback cb)
+{
+    messageCallback = std::move(cb);
 }
 
 //==============================================================================
@@ -497,5 +358,4 @@ void OscHandler::addToLog(const juce::String& msg)
     
     // Also write to debug console
     DBG(msg);
->>>>>>> 9e81b5a766b9004070b2c5c33e55118510f20989
 }
