@@ -9,9 +9,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
-
-class AiEngine;
-class OscHandler;
+#include "OscHandler.h"
+#include "AiEngine.h"
 
 //==============================================================================
 class OpenClawAudioProcessor : public juce::AudioProcessor
@@ -69,6 +68,12 @@ public:
     // OSC
     int getOscPort() const { return oscPort; }
     void setOscPort(int port);
+    bool isOscConnected() const;
+    juce::StringArray getOscLog() const;
+    void clearOscLog();
+    
+    // OSC Message received callback
+    void handleOscMessage(const juce::String& address, float value);
 
 private:
     //==============================================================================

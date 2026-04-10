@@ -1,33 +1,32 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 project(OpenClaw-VST-Plugin VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Percorso JUCE su Windows
-set(JUCE_ROOT "C:/Users/Whyed/Desktop/CARTELLE/JUCE")
+# ==============================================================================
+# JUCE Configuration
+# ==============================================================================
+
+# Try environment variable first, then common paths
+if(DEFINED ENV{JUCE_ROOT})
+    set(JUCE_ROOT "$ENV{JUCE_ROOT}")
+elseif(EXISTS "/home/carlo/SDKs/JUCE")
+    set(JUCE_ROOT "/home/carlo/SDKs/JUCE")  # Linux (Carlo)
+elseif(EXISTS "C:/Users/Whyed/Desktop/CARTELLE/JUCE")
+    set(JUCE_ROOT "C:/Users/Whyed/Desktop/CARTELLE/JUCE")  # Windows (Edo)
+elseif(EXISTS "/Users/edo/SDKs/JUCE")
+    set(JUCE_ROOT "/Users/edo/SDKs/JUCE")  # macOS
+else()
+    message(FATAL_ERROR "JUCE not found. Set JUCE_ROOT environment variable or install JUCE.")
+endif()
 
 message(STATUS "JUCE_ROOT: ${JUCE_ROOT}")
 add_subdirectory(${JUCE_ROOT} JUCE)
 
-# Dipendenze esterne
-set(OSCPACK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/oscpack")
-set(NLOHMANN_JSON_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/nlohmann_json")
-
-# oscpack static library (Win32 specific)
-add_library(oscpack STATIC
-    ${OSCPACK_ROOT}/osc/OscOutboundPacketStream.cpp
-    ${OSCPACK_ROOT}/osc/OscReceivedElements.cpp
-    ${OSCPACK_ROOT}/osc/OscTypes.cpp
-    ${OSCPACK_ROOT}/osc/OscPrintReceivedElements.cpp
-    ${OSCPACK_ROOT}/ip/win32/NetworkingUtils.cpp
-    ${OSCPACK_ROOT}/ip/win32/UdpSocket.cpp
-)
-target_include_directories(oscpack PUBLIC ${OSCPACK_ROOT})
-
-# nlohmann_json
-add_library(nlohmann_json INTERFACE)
-target_include_directories(nlohmann_json INTERFACE ${NLOHMANN_JSON_ROOT}/single_include)
+# ==============================================================================
+# JUCE Plugin
+# ==============================================================================
 
 juce_add_plugin(OpenClawVSTPlugin
     COMPANY_NAME "OpenClaw"
@@ -40,6 +39,15 @@ juce_add_plugin(OpenClawVSTPlugin
     PRODUCT_NAME "OpenClaw VST Bridge AI"
 )
 
+# Disabilita VST2 fallback
+target_compile_definitions(OpenClawVSTPlugin PRIVATE
+    JUCE_VST3_CAN_REPLACE_VST2=0
+)
+
+# ==============================================================================
+# Source Files
+# ==============================================================================
+
 target_sources(OpenClawVSTPlugin
     PRIVATE
         src/core/PluginProcessor.cpp
@@ -48,11 +56,58 @@ target_sources(OpenClawVSTPlugin
         src/ai/AiEngine.cpp
 )
 
+# ==============================================================================
+# Link Libraries
+# ==============================================================================
+
 target_link_libraries(OpenClawVSTPlugin
     PRIVATE
+        # Audio modules (required for Standalone)
         juce::juce_audio_utils
-        oscpack
-        nlohmann_json
+        juce::juce_audio_devices
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_basics
+        # Core
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_events
+        # GUI
+        juce::juce_graphics
+        juce::juce_gui_basics
 )
 
-target_include_directories(OpenClawVSTPlugin PRIVATE src/core src/osc src/ai)
+# ==============================================================================
+# Include Directories
+# ==============================================================================
+
+target_include_directories(OpenClawVSTPlugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
+)
+
+# ==============================================================================
+# Linux-specific
+# ==============================================================================
+
+if(NOT WIN32 AND NOT APPLE)
+    # Find GTK and WebKit via pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GTK REQUIRED gtk+-3.0)
+    pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
+    pkg_check_modules(CURL REQUIRED libcurl)
+    
+    # Add include directories for GTK and WebKit
+    target_include_directories(OpenClawVSTPlugin PRIVATE ${GTK_INCLUDE_DIRS})
+    target_include_directories(OpenClawVSTPlugin PRIVATE ${WEBKIT_INCLUDE_DIRS})
+    
+    # Link libraries
+    target_link_libraries(OpenClawVSTPlugin PRIVATE ${GTK_LIBRARIES})
+    target_link_libraries(OpenClawVSTPlugin PRIVATE ${WEBKIT_LIBRARIES})
+    target_link_libraries(OpenClawVSTPlugin PRIVATE ${CURL_LIBRARIES})
+    
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/OpenClawVSTPlugin_artefacts/Release/VST3/
+            DESTINATION ~/.vst3
+    )
+endif()

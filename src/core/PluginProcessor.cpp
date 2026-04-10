@@ -8,10 +8,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-// Forward declarations for incomplete types
-class AiEngine {};
-class OscHandler {};
-
 //==============================================================================
 OpenClawAudioProcessor::OpenClawAudioProcessor()
     : parameters(*this, nullptr, "Parameters", []() -> juce::AudioProcessorValueTreeState::ParameterLayout
@@ -42,32 +38,46 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
     gainParam1 = parameters.getRawParameterValue("gain1");
     gainParam2 = parameters.getRawParameterValue("gain2");
     
-    // Initialize AI Engine (placeholder - will be implemented)
-    // aiEngine = std::make_unique<AiEngine>();
+    // Initialize OSC Handler
+    oscHandler = std::make_unique<OscHandler>(oscPort);
     
-    // Initialize OSC Handler (placeholder - will be implemented)
-    // oscHandler = std::make_unique<OscHandler>(oscPort);
+    // Set callback for incoming OSC messages
+    oscHandler->setCallback([this](const juce::String& address, float value) {
+        handleOscMessage(address, value);
+    });
+    
+    // Initialize AI Engine (placeholder)
+    aiEngine = std::make_unique<AiEngine>();
 }
 
-OpenClawAudioProcessor::~OpenClawAudioProcessor() = default;
+OpenClawAudioProcessor::~OpenClawAudioProcessor()
+{
+    // Stop OSC before destruction
+    if (oscHandler)
+        oscHandler->stop();
+}
 
 //==============================================================================
 void OpenClawAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    // Prepare AI Engine
-    // if (aiEngine)
-    //     aiEngine->prepare(sampleRate, samplesPerBlock);
+    juce::ignoreUnused(sampleRate, samplesPerBlock);
     
     // Start OSC Handler
-    // if (oscHandler)
-    //     oscHandler->start();
+    if (oscHandler && !oscHandler->isRunning())
+    {
+        oscHandler->start();
+        DBG("[OpenClaw] OSC Handler started on port " + juce::String(oscPort));
+    }
 }
 
 void OpenClawAudioProcessor::releaseResources()
 {
     // Stop OSC Handler
-    // if (oscHandler)
-    //     oscHandler->stop();
+    if (oscHandler)
+    {
+        oscHandler->stop();
+        DBG("[OpenClaw] OSC Handler stopped");
+    }
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -101,16 +111,16 @@ void OpenClawAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         buffer.applyGain(gain);
     }
     
-    // Process MIDI messages (placeholder)
+    // Process MIDI messages
     for (const auto midiMessage : midiMessages)
     {
         auto message = midiMessage.getMessage();
-        // Handle MIDI CC messages for parameter control
         if (message.isController())
         {
             int ccNumber = message.getControllerNumber();
             int ccValue = message.getControllerValue();
-            // Map MIDI CC to parameters (to be implemented)
+            juce::ignoreUnused(ccNumber, ccValue);
+            // TODO: Map MIDI CC to parameters
         }
     }
 }
@@ -154,18 +164,70 @@ void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInByt
 
 void OpenClawAudioProcessor::sendAiPrompt(const juce::String& prompt)
 {
-    juce::ignoreUnused(prompt);
-    // TODO: Send prompt to AI Engine
-    // if (aiEngine)
-    //     lastAiResponse = aiEngine->sendPrompt(prompt);
+    if (aiEngine)
+        lastAiResponse = aiEngine->sendPrompt(prompt);
 }
 
 void OpenClawAudioProcessor::setOscPort(int port)
 {
     oscPort = port;
-    // TODO: Restart OSC handler with new port
-    // if (oscHandler)
-    //     oscHandler->setPort(port);
+    if (oscHandler)
+        oscHandler->setPort(port);
+}
+
+bool OpenClawAudioProcessor::isOscConnected() const
+{
+    return oscHandler ? oscHandler->isConnected() : false;
+}
+
+juce::StringArray OpenClawAudioProcessor::getOscLog() const
+{
+    return oscHandler ? oscHandler->getMessageLog() : juce::StringArray();
+}
+
+void OpenClawAudioProcessor::clearOscLog()
+{
+    if (oscHandler)
+        oscHandler->clearLog();
+}
+
+void OpenClawAudioProcessor::handleOscMessage(const juce::String& address, float value)
+{
+    // This is called from the OSC listener thread!
+    // We need to be thread-safe here
+    
+    DBG("[OpenClaw] OSC received: " + address + " = " + juce::String(value, 3));
+    
+    // Map common OSC addresses to parameters
+    // Reaper uses: /track/1/volume, /track/1/pan, etc.
+    // Ableton OSC uses similar patterns
+    
+    // Example mapping:
+    if (address.contains("volume") || address.contains("gain"))
+    {
+        // Convert 0-1 range to dB (-60 to +12)
+        float dbValue = -60.0f + value * 72.0f;  // 72dB range
+        // Note: We can't modify parameters from audio thread safely
+        // This is just for logging/MIDI mapping in Phase 2
+    }
+    else if (address.contains("play"))
+    {
+        // Transport play
+        DBG("[OpenClaw] Transport: PLAY");
+    }
+    else if (address.contains("stop"))
+    {
+        // Transport stop
+        DBG("[OpenClaw] Transport: STOP");
+    }
+    else if (address.contains("record"))
+    {
+        // Transport record
+        DBG("[OpenClaw] Transport: RECORD");
+    }
+    
+    // In Phase 2, we'll forward these to the UI via AsyncUpdater
+    // and implement bidirectional OSC (plugin -> DAW)
 }
 
 //==============================================================================
