@@ -25,6 +25,16 @@ message(STATUS "JUCE_ROOT: ${JUCE_ROOT}")
 add_subdirectory(${JUCE_ROOT} JUCE)
 
 # ==============================================================================
+# cURL - Required for AI HTTP requests
+# ==============================================================================
+# cURL is used for HTTP POST to Ollama, Gemini, OpenAI, etc.
+# Linux: sudo apt install libcurl4-openssl-dev
+# Windows: vcpkg install curl (or use prebuilt binaries)
+# macOS: brew install curl (or use system framework)
+find_package(CURL REQUIRED)
+message(STATUS "CURL found: ${CURL_LIBRARIES}")
+
+# ==============================================================================
 # JUCE Plugin
 # ==============================================================================
 
@@ -75,6 +85,8 @@ target_link_libraries(OpenClawVSTPlugin
         # GUI
         juce::juce_graphics
         juce::juce_gui_basics
+        # HTTP
+        ${CURL_LIBRARIES}
 )
 
 # ==============================================================================
@@ -85,27 +97,23 @@ target_include_directories(OpenClawVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
+    ${CURL_INCLUDE_DIRS}
 )
 
 # ==============================================================================
-# Linux-specific
+# Linux-specific (GTK, WebKit, install)
 # ==============================================================================
 
 if(NOT WIN32 AND NOT APPLE)
-    # Find GTK and WebKit via pkg-config
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK REQUIRED gtk+-3.0)
     pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
-    pkg_check_modules(CURL REQUIRED libcurl)
     
-    # Add include directories for GTK and WebKit
     target_include_directories(OpenClawVSTPlugin PRIVATE ${GTK_INCLUDE_DIRS})
     target_include_directories(OpenClawVSTPlugin PRIVATE ${WEBKIT_INCLUDE_DIRS})
     
-    # Link libraries
     target_link_libraries(OpenClawVSTPlugin PRIVATE ${GTK_LIBRARIES})
     target_link_libraries(OpenClawVSTPlugin PRIVATE ${WEBKIT_LIBRARIES})
-    target_link_libraries(OpenClawVSTPlugin PRIVATE ${CURL_LIBRARIES})
     
     install(DIRECTORY ${CMAKE_BINARY_DIR}/OpenClawVSTPlugin_artefacts/Release/VST3/
             DESTINATION ~/.vst3
