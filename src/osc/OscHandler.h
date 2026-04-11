@@ -88,6 +88,7 @@ private:
     std::atomic<bool> connected{false};
     std::atomic<bool> learnMode{false};
     std::atomic<int> messagesReceived{0};
+    std::atomic<int> messagesSent{0};
     
     juce::String learnedAddress;
     
