@@ -3,8 +3,8 @@
   AiEngine.h
   OpenClaw VST Bridge AI - AI Engine for multi-provider support
   
-  Phase 1: Placeholder - returns mock responses
-  Phase 2: Will integrate Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
+  Phase 2 IN PROGRESS: Ollama local implemented
+  Phase 3: Will add Gemini, Anthropic, OpenAI, OpenRouter, Groq
   ==============================================================================
 */
 
@@ -49,6 +49,11 @@ public:
     juce::String sendPrompt(const juce::String& prompt);
     
     //==============================================================================
+    /** Send a prompt asynchronously (non-blocking) */
+    using ResponseCallback = std::function<void(const juce::String& response, bool success)>;
+    void sendPromptAsync(const juce::String& prompt, ResponseCallback callback);
+    
+    //==============================================================================
     /** Get available models for current provider */
     juce::StringArray getAvailableModels();
     
@@ -63,11 +68,30 @@ public:
     //==============================================================================
     /** Check if configured */
     bool isConfigured() const { return configured; }
+    
+    //==============================================================================
+    /** Get current provider name */
+    juce::String getProviderName() const;
+    
+    //==============================================================================
+    /** Get current model name */
+    juce::String getModelName() const { return config.model; }
 
 private:
     Config config;
     bool configured = false;
     juce::String lastError;
+    
+    //==============================================================================
+    /** HTTP helper for making requests */
+    juce::String makeHttpRequest(const juce::String& url,
+                                  const juce::String& method,
+                                  const juce::String& jsonBody,
+                                  int timeoutMs);
+    
+    //==============================================================================
+    /** JSON parsing helper */
+    juce::String parseJsonResponse(const juce::String& json, const juce::String& key);
     
     //==============================================================================
     /** Internal implementations for each provider */
