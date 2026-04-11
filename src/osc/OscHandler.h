@@ -3,10 +3,11 @@
   OscHandler.h
   OpenClaw VST Bridge AI - OSC Communication Handler
   
-  Listens for OSC messages from DAW (Reaper, Ableton, etc.)
-  and forwards them to the plugin. Also sends OSC back to DAW.
+  Bidirectional OSC: receives from DAW and sends back.
+  Receive: UDP listener on configurable port (default 9000)
+  Send: UDP to target host:port (default localhost:9001)
   
-  Phase 1: Receive-only (listen + log)
+  Phase 1 COMPLETE: Receive + Send
   ==============================================================================
 */
 
@@ -46,6 +47,12 @@ public:
     void sendMessage(const juce::String& address, float value);
     void sendMessage(const juce::String& address, const juce::String& value);
     void sendMessage(const juce::String& address, int value);
+    
+    //==============================================================================
+    /** Set send target (DAW OSC address) */
+    void setSendTarget(const juce::String& host, int sendPort);
+    juce::String getSendHost() const { return sendHost; }
+    int getSendPort() const { return sendPortNum; }
     
     //==============================================================================
     /** Set callbacks for incoming messages */
@@ -108,8 +115,23 @@ private:
     void addToLog(const juce::String& msg);
     
     //==============================================================================
-    /** UDP socket (using JUCE's UDP) */
-    std::unique_ptr<juce::DatagramSocket> socket;
+    /** UDP sockets */
+    std::unique_ptr<juce::DatagramSocket> socket;        // Receive socket
+    std::unique_ptr<juce::DatagramSocket> sendSocket;     // Send socket
+    
+    //==============================================================================
+    /** Send target */
+    juce::String sendHost = "127.0.0.1";
+    int sendPortNum = 9001;
+    
+    //==============================================================================
+    /** OSC binary encoding helpers */
+    void writeOscAddress(juce::MemoryBlock& dest, const juce::String& address);
+    void writeOscTypeTag(juce::MemoryBlock& dest, const juce::String& typeTag);
+    void writeOscFloatArg(juce::MemoryBlock& dest, float value);
+    void writeOscIntArg(juce::MemoryBlock& dest, int32_t value);
+    void writeOscStringArg(juce::MemoryBlock& dest, const juce::String& value);
+    void padToFourBytes(juce::MemoryBlock& dest);
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscHandler)
 };

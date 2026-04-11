@@ -3,13 +3,13 @@
   OscHandler.cpp
   OpenClaw VST Bridge AI - OSC Communication Handler Implementation
   
-  Phase 1: Receive-only
-  - Listens on UDP port (default 9000)
-  - Parses incoming OSC messages
-  - Logs messages for debugging
-  - Notifies plugin via callback
+  Phase 1 COMPLETE: Bidirectional OSC
+  - Receives on UDP port (default 9000)
+  - Sends to target host:port (default 127.0.0.1:9001)
+  - Parses and constructs OSC binary packets
+  - Thread-safe message log
   
-  Multipiattaforma: funziona su Linux, Windows, macOS
+  Multipiattaforma: Linux, Windows, macOS
   ==============================================================================
 */
 
@@ -24,6 +24,10 @@ OscHandler::OscHandler(int p) : port(p)
 OscHandler::~OscHandler()
 {
     stop();
+    
+    // Cleanup send socket
+    if (sendSocket)
+        sendSocket.reset();
 }
 
 //==============================================================================
@@ -280,34 +284,184 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
 }
 
 //==============================================================================
-void OscHandler::sendMessage(const juce::String& address, float value)
+void OscHandler::setSendTarget(const juce::String& host, int sendPort)
 {
-    if (!socket || !connected.load())
+    sendHost = host;
+    sendPortNum = sendPort;
+    
+    // Create send socket if not exists
+    if (!sendSocket)
     {
-        addToLog("[OSC] ERROR: Not connected, cannot send");
-        return;
+        sendSocket = std::make_unique<juce::DatagramSocket>();
+        sendSocket->setEnablePortReuse(false);
     }
     
-    // Phase 2: implement sending
-    // For now, just log
-    addToLog("[OSC] SEND (not implemented): " + address + " → " + juce::String(value, 3));
+    addToLog("[OSC] Send target set to " + host + ":" + juce::String(sendPort));
+}
+
+//==============================================================================
+void OscHandler::sendMessage(const juce::String& address, float value)
+{
+    if (!sendSocket)
+    {
+        sendSocket = std::make_unique<juce::DatagramSocket>();
+        sendSocket->setEnablePortReuse(false);
+    }
+    
+    // Build OSC packet: address pattern + type tag + argument
+    juce::MemoryBlock packet;
+    
+    // Address pattern (null-terminated, padded to 4 bytes)
+    writeOscAddress(packet, address);
+    
+    // Type tag: ",f" for single float
+    writeOscTypeTag(packet, "f");
+    
+    // Float argument (big-endian)
+    writeOscFloatArg(packet, value);
+    
+    // Send via UDP
+    int bytesSent = sendSocket->write(sendHost, sendPortNum, 
+                                        packet.getData(), 
+                                        static_cast<int>(packet.getSize()));
+    
+    if (bytesSent > 0)
+    {
+        addToLog("[OSC] SENT: " + address + " → " + juce::String(value, 3) + 
+                 " (" + juce::String(bytesSent) + " bytes)");
+        messagesSent.fetch_add(1);
+    }
+    else
+    {
+        addToLog("[OSC] ERROR: Failed to send to " + sendHost + ":" + juce::String(sendPortNum));
+    }
 }
 
 void OscHandler::sendMessage(const juce::String& address, const juce::String& value)
 {
-    if (!socket || !connected.load())
+    if (!sendSocket)
     {
-        addToLog("[OSC] ERROR: Not connected, cannot send");
-        return;
+        sendSocket = std::make_unique<juce::DatagramSocket>();
+        sendSocket->setEnablePortReuse(false);
     }
     
-    // Phase 2: implement sending
-    addToLog("[OSC] SEND (not implemented): " + address + " → \"" + value + "\"");
+    // Build OSC packet
+    juce::MemoryBlock packet;
+    
+    writeOscAddress(packet, address);
+    writeOscTypeTag(packet, "s");
+    writeOscStringArg(packet, value);
+    
+    int bytesSent = sendSocket->write(sendHost, sendPortNum,
+                                        packet.getData(),
+                                        static_cast<int>(packet.getSize()));
+    
+    if (bytesSent > 0)
+    {
+        addToLog("[OSC] SENT: " + address + " → \"" + value + "\"");
+        messagesSent.fetch_add(1);
+    }
+    else
+    {
+        addToLog("[OSC] ERROR: Failed to send string to " + sendHost + ":" + juce::String(sendPortNum));
+    }
 }
 
 void OscHandler::sendMessage(const juce::String& address, int value)
 {
-    sendMessage(address, static_cast<float>(value));
+    if (!sendSocket)
+    {
+        sendSocket = std::make_unique<juce::DatagramSocket>();
+        sendSocket->setEnablePortReuse(false);
+    }
+    
+    juce::MemoryBlock packet;
+    
+    writeOscAddress(packet, address);
+    writeOscTypeTag(packet, "i");
+    writeOscIntArg(packet, value);
+    
+    int bytesSent = sendSocket->write(sendHost, sendPortNum,
+                                        packet.getData(),
+                                        static_cast<int>(packet.getSize()));
+    
+    if (bytesSent > 0)
+    {
+        addToLog("[OSC] SENT: " + address + " → " + juce::String(value));
+        messagesSent.fetch_add(1);
+    }
+    else
+    {
+        addToLog("[OSC] ERROR: Failed to send int to " + sendHost + ":" + juce::String(sendPortNum));
+    }
+}
+
+//==============================================================================
+// OSC Binary Encoding Helpers
+//==============================================================================
+
+void OscHandler::writeOscAddress(juce::MemoryBlock& dest, const juce::String& address)
+{
+    // Address must start with '/'
+    dest.append(address.toRawUTF8(), address.getNumBytesAsUTF8());
+    dest.append("\0", 1);
+    padToFourBytes(dest);
+}
+
+void OscHandler::writeOscTypeTag(juce::MemoryBlock& dest, const juce::String& typeTag)
+{
+    // Type tag starts with ','
+    dest.append(",", 1);
+    dest.append(typeTag.toRawUTF8(), typeTag.getNumBytesAsUTF8());
+    dest.append("\0", 1);
+    padToFourBytes(dest);
+}
+
+void OscHandler::writeOscFloatArg(juce::MemoryBlock& dest, float value)
+{
+    // OSC uses big-endian (network byte order)
+    uint32_t intValue;
+    std::memcpy(&intValue, &value, 4);
+    
+    // Convert to big-endian
+    uint8_t bytes[4];
+    bytes[0] = (intValue >> 24) & 0xFF;
+    bytes[1] = (intValue >> 16) & 0xFF;
+    bytes[2] = (intValue >> 8) & 0xFF;
+    bytes[3] = intValue & 0xFF;
+    
+    dest.append(bytes, 4);
+}
+
+void OscHandler::writeOscIntArg(juce::MemoryBlock& dest, int32_t value)
+{
+    // OSC uses big-endian (network byte order)
+    uint8_t bytes[4];
+    bytes[0] = (value >> 24) & 0xFF;
+    bytes[1] = (value >> 16) & 0xFF;
+    bytes[2] = (value >> 8) & 0xFF;
+    bytes[3] = value & 0xFF;
+    
+    dest.append(bytes, 4);
+}
+
+void OscHandler::writeOscStringArg(juce::MemoryBlock& dest, const juce::String& value)
+{
+    dest.append(value.toRawUTF8(), value.getNumBytesAsUTF8());
+    dest.append("\0", 1);
+    padToFourBytes(dest);
+}
+
+void OscHandler::padToFourBytes(juce::MemoryBlock& dest)
+{
+    // OSC requires all elements to be 4-byte aligned
+    size_t currentSize = dest.getSize();
+    size_t padding = (4 - (currentSize % 4)) % 4;
+    
+    if (padding > 0)
+    {
+        dest.append("\0\0\0", padding);
+    }
 }
 
 //==============================================================================
