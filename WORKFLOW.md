@@ -73,6 +73,73 @@ git push origin master
 
 ---
 
+## 🌿 Branch Strategy (Avanzato)
+
+Per progetti complessi, usare branch di staging:
+
+### Struttura Branch
+```
+main          ← Stabile, solo merge reviewati
+  ├── aura    ← Staging Carlo/Aura (backend testato)
+  └── heartbroken ← Staging Edo/Heartbroken (UI testata)
+```
+
+### Regole per Heartbroken
+
+#### 1. Prima di lavorare
+```bash
+# Assicurati di essere su 'heartbroken'
+git fetch origin && git switch heartbroken
+# Se non esiste: git switch -c heartbroken && git push -u origin heartbroken
+```
+
+#### 2. Crea feature branch da 'heartbroken'
+```bash
+git switch -c feat/nome-feature-chiaro heartbroken
+# Prefissi: feat/, fix/, refactor/, docs/
+# Il nome deve descrivere la logica implementata
+```
+
+#### 3. Committa SOLO sul feature branch
+```bash
+git commit -m "HEARTBROKEN: feat: aggiunto GainSlider React"
+# Commit piccoli e atomici
+```
+
+#### 4. Merge in 'heartbroken' quando funzionante
+```bash
+git switch heartbroken
+git merge --no-ff feat/nome-feature-chiaro
+git push origin heartbroken
+git branch -d feat/nome-feature-chiaro
+```
+
+#### 5. Notifica Aura per review
+Comunica ad Aura che 'heartbroken' è pronto per review.
+Aura revisionerà e deciderà se fare merge su 'main'.
+
+#### 6. Dopo merge di Aura, riallinea 'heartbroken'
+```bash
+git switch heartbroken
+git fetch origin
+
+# VERIFICA prima di reset:
+git branch --merged heartbroken
+# Se branch non mergiati, mergiarli PRIMA
+
+git reset --hard origin/main
+git push --force-with-lease origin heartbroken
+```
+
+### Regole Fisse per Heartbroken
+- ❌ Non pushare MAI direttamente su 'main'
+- ❌ Non creare feature branch da 'main', solo da 'heartbroken'
+- ❌ Non cancellare MAI il branch 'heartbroken'
+- ✅ 'heartbroken' deve contenere solo codice funzionante e testato
+- ✅ Ogni commit DEVE iniziare con `HEARTBROKEN:`
+
+---
+
 ## 📁 Divisione Responsabilità
 
 | Area | Responsabile | File Tipici |
