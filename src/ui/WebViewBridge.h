@@ -7,7 +7,8 @@
 
 #pragma once
 
-#include <JuceHeader.h>
+#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_core/juce_core.h>
 #include <functional>
 #include <nlohmann/json.hpp>
 
