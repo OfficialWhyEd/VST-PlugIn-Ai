@@ -30,10 +30,9 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     juce::String jsonStr = message.dump();
     jsonStr = jsonStr.replace("\"", "\\\"").replace("\n", "\\n");
     
-    // Call JavaScript function in frontend
-    juce::String jsCode = "window.receiveFromBackend && window.receiveFromBackend(\"" + jsonStr + "\");";
-    
-    evaluateJavaScript(jsCode);
+    // Use goToURL with javascript: scheme (works in JUCE)
+    juce::String jsCode = "javascript:if(window.receiveFromBackend){window.receiveFromBackend(\"" + jsonStr + "\");}";
+    webView->goToURL(jsCode);
 }
 
 void WebViewBridge::setFrontendMessageCallback(FrontendMessageCallback callback)
@@ -54,14 +53,5 @@ void WebViewBridge::handleMessageFromFrontend(const juce::String& jsonString)
         {
             juce::Logger::writeToLog("WebViewBridge: Failed to parse JSON: " + juce::String(e.what()));
         }
-    }
-}
-
-void WebViewBridge::evaluateJavaScript(const juce::String& jsCode)
-{
-    if (webView)
-    {
-        // JUCE 7 uses evaluateJavaScript
-        webView->goToURL(juce::String("javascript:") + jsCode);
     }
 }

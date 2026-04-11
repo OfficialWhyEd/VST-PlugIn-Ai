@@ -34,7 +34,4 @@ public:
 private:
     juce::WebBrowserComponent* webView = nullptr;
     FrontendMessageCallback frontendMessageCallback;
-    
-    // Convert JSON to JavaScript call
-    void evaluateJavaScript(const juce::String& jsCode);
 };
