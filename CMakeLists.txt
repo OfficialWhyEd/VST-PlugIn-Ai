@@ -66,6 +66,7 @@ target_sources(OpenClawVSTPlugin
         src/core/PluginEditor.cpp
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
+        src/ui/WebViewBridge.cpp
 )
 
 # ==============================================================================

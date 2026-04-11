@@ -9,6 +9,7 @@
 
 #include <JuceHeader.h>
 #include <functional>
+#include <nlohmann/json.hpp>
 
 class WebViewBridge
 {
@@ -16,26 +17,21 @@ public:
     WebViewBridge();
     ~WebViewBridge();
     
-    // Initialize the web view with HTML content
-    bool initialize(void* parentHandle, int width, int height);
+    // Initialize the web view
+    void initialize(juce::WebBrowserComponent* webView);
     void shutdown();
     
-    // Send message to React frontend
-    void sendToFrontend(const juce::String& message);
+    // Send JSON message to React frontend
+    void sendToFrontend(const nlohmann::json& message);
     
     // Set callback for messages from React frontend
-    using FrontendMessageCallback = std::function<void(const juce::String&)>;
+    using FrontendMessageCallback = std::function<void(const nlohmann::json&)>;
     void setFrontendMessageCallback(FrontendMessageCallback callback);
     
-    // Load a URL or HTML content
-    void loadURL(const juce::String& url);
-    void loadHTML(const juce::String& htmlContent, const juce::String& baseURL = {});
+    // Handle message from frontend (called by JavaScript)
+    void handleMessageFromFrontend(const juce::String& jsonString);
     
 private:
-    // Pointer to the web view component
-    class WebViewComponent;
-    std::unique_ptr<WebViewComponent> webViewComponent;
-    
-    // Callback for messages from frontend
+    juce::WebBrowserComponent* webView = nullptr;
     FrontendMessageCallback frontendMessageCallback;
 };
