@@ -99,6 +99,7 @@ target_include_directories(OpenClawVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
     ${CURL_INCLUDE_DIRS}
 )
 
