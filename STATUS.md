@@ -20,23 +20,31 @@
 
 ## 🔄 In Corso (Windows - Edo)
 
-**Setup completato:**
-- Repo clonato in `C:\Users\Whyed\Desktop\VST-PlugIn-Ai`
-- JUCE installato in `C:\Users\Whyed\Desktop\CARTELLE\JUCE`
-- vcpkg in `C:\Users\Whyed\vcpkg` con curl:x64-windows e nlohmann-json:x64-windows
+**Build completata:** ✅
+- Repo clonato, JUCE e vcpkg configurati
+- Commit `be777b8`: Fix include JUCE
 
-**Ultimo fix:**
-- Corretto include JUCE in `WebViewBridge.h` (da `<JuceHeader.h>` a `<juce_gui_extra/juce_gui_extra.h>`)
-- Commit: `be777b8`
+**Task attuali:**
+| Task | Stato | Note |
+|------|-------|------|
+| Build Windows | ✅ Completata | VST3 e Standalone compilati |
+| Test Ableton | ⏳ Da fare | Verificare caricamento plugin |
+| Rilevare eventi DAW | ❓ Bloccato | Edo deve confermare se sa come fare |
 
-**Prossimo passo per Edo:**
-```powershell
-cd C:\Users\Whyed\Desktop\VST-PlugIn-Ai
-git pull origin master
-rmdir /s /q build
-cmake -B build -DJUCE_ROOT=C:/Users/Whyed/Desktop/CARTELLE/JUCE -DCMAKE_TOOLCHAIN_FILE=C:/Users/Whyed/vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build --config Release
-```
+**Problema:** La TODO list promessa da Edo non è stata pushata. Heartbroken e Edo lavorano senza task assegnati.
+
+**Soluzione temporanea:** Vedi `PENDING_TODO.md` con task aggiornati.
+
+---
+
+## 🔴 Bloccante: Task Team Ridefiniti
+
+| Ruolo | Task | Problema | Azione |
+|-------|------|----------|--------|
+| **Edo (C++)** | Rilevare eventi DAW → inviare a JS | Non so se sa come fare | Documentare esempio OSC |
+| **Heartbroken (React)** | UI dinamica con widget | Non sa dell'idea "toolbox" | Allineare su design |
+
+**Nota:** Toolbox modulare = plugin rileva eventi DAW e propone widget dinamici. Es: "Rilevato pitch su ch1. Aggiungere slider?"
 
 ---
 
