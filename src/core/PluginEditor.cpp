@@ -9,6 +9,36 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
+// OpenClawWebBrowserComponent Implementation
+//==============================================================================
+
+OpenClawWebBrowserComponent::OpenClawWebBrowserComponent()
+{
+}
+
+bool OpenClawWebBrowserComponent::pageAboutToLoad(const juce::String& url)
+{
+    // Chiama callback esterno se impostato
+    if (onPageAboutToLoad)
+    {
+        return onPageAboutToLoad(url);
+    }
+    return true; // Lascia caricare di default
+}
+
+void OpenClawWebBrowserComponent::pageFinishedLoading(const juce::String& url)
+{
+    // Chiama callback esterno se impostato
+    if (onPageFinishedLoading)
+    {
+        onPageFinishedLoading(url);
+    }
+}
+
+//==============================================================================
+// OpenClawAudioProcessorEditor Implementation
+//==============================================================================
+
 OpenClawAudioProcessorEditor::OpenClawAudioProcessorEditor(OpenClawAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
@@ -26,7 +56,8 @@ OpenClawAudioProcessorEditor::~OpenClawAudioProcessorEditor()
     // Cleanup
     if (webView)
     {
-        webView->removeListener(this);
+        webView->onPageAboutToLoad = nullptr;
+        webView->onPageFinishedLoading = nullptr;
         webView.reset();
     }
     
@@ -48,32 +79,71 @@ void OpenClawAudioProcessorEditor::loadUI()
         .getParentDirectory();
     juce::File altUiDir = pluginDir.getChildFile("webview-ui").getChildFile("dist");
     
-    bool useWebView = uiBuildDir.exists() || altUiDir.exists();
+    // In development, prova anche localhost
+    bool hasWebUI = uiBuildDir.exists() || altUiDir.exists();
     
-    if (useWebView)
-    {
-        setupWebView();
-    }
-    else
-    {
-        setupFallbackUI();
-    }
+    // Per ora usiamo sempre la WebView (anche per localhost development)
+    setupWebView();
 }
 
 void OpenClawAudioProcessorEditor::setupWebView()
 {
-    // Crea WebBrowserComponent
-    webView = std::make_unique<juce::WebBrowserComponent>();
-    webView->addListener(this);
+    // Crea WebBrowserComponent custom
+    webView = std::make_unique<OpenClawWebBrowserComponent>();
     addAndMakeVisible(*webView);
     
     // Inizializza il bridge
     webViewBridge.initialize(webView.get());
     
-    // Setup callback per messaggi dal frontend
-    webViewBridge.setFrontendMessageCallback([this](const nlohmann::json& msg) {
-        handleFrontendMessage(msg);
-    });
+    // Setup callbacks
+    webView->onPageAboutToLoad = [this](const juce::String& url) {
+        // Passa al bridge per gestire messaggi app://
+        if (webViewBridge.handleMessageFromURL(url))
+        {
+            return false; // Consumato, blocca navigazione
+        }
+        return true; // Lascia caricare
+    };
+    
+    webView->onPageFinishedLoading = [this](const juce::String& url) {
+        DBG("[PluginEditor] Pagina caricata: " + url.substring(0, 100));
+        
+        // Inietta il bridge JavaScript nella pagina
+        juce::String bridgeScript = R"(
+            if (typeof window.__openclawBridge === 'undefined') {
+                window.__openclawBridge = {
+                    receiveMessage: function(jsonStr) {
+                        try {
+                            const msg = JSON.parse(jsonStr);
+                            window.dispatchEvent(new CustomEvent('openclaw-message', { detail: msg }));
+                        } catch (e) {
+                            console.error('[OpenClaw] Failed to parse message:', e);
+                        }
+                    },
+                    sendMessage: function(msg) {
+                        const jsonStr = JSON.stringify(msg);
+                        window.location.href = 'app://message/' + encodeURIComponent(jsonStr);
+                    }
+                };
+                console.log('[OpenClaw] Bridge initialized from C++');
+            }
+        )";
+        
+        // Invia script via goToURL
+        juce::String jsCode = "javascript:" + bridgeScript;
+        webView->goToURL(jsCode);
+        
+        // Notifica al frontend che il plugin è pronto (dopo un breve delay)
+        juce::Timer::callAfterDelay(100, [this]() {
+            nlohmann::json msg;
+            msg["type"] = "plugin.init";
+            msg["id"] = nullptr;
+            msg["timestamp"] = juce::Time::currentTimeMillis();
+            msg["payload"]["version"] = "1.0.0";
+            msg["payload"]["capabilities"] = nlohmann::json::array({"widgets", "ai", "osc"});
+            webViewBridge.sendToFrontend(msg);
+        });
+    };
     
     // Carica la UI
     juce::String uiUrl = getUIURL();
@@ -83,7 +153,7 @@ void OpenClawAudioProcessorEditor::setupWebView()
 
 void OpenClawAudioProcessorEditor::setupFallbackUI()
 {
-    // UI nativa JUCE (quando React non è disponibile)
+    // UI nativa JUCE (quando WebView non disponibile)
     
     // Title label
     titleLabel.setText("OpenClaw VST Bridge AI (Fallback UI)", juce::dontSendNotification);
@@ -172,70 +242,6 @@ juce::String OpenClawAudioProcessorEditor::getUIURL() const
 }
 
 //==============================================================================
-// WebBrowserComponent::Listener
-
-bool OpenClawAudioProcessorEditor::pageAboutToLoad(const juce::String& url)
-{
-    DBG("[PluginEditor] pageAboutToLoad: " + url.substring(0, 100));
-    
-    // Passa al bridge per gestire messaggi app://
-    if (webViewBridge.handleMessageFromURL(url))
-    {
-        // URL consumato dal bridge (era un messaggio)
-        return false; // Blocca navigazione
-    }
-    
-    // Altrimenti lascia caricare la pagina
-    return true;
-}
-
-void OpenClawAudioProcessorEditor::pageFinishedLoading(const juce::String& url)
-{
-    DBG("[PluginEditor] Pagina caricata: " + url.substring(0, 100));
-    
-    // Inietta il bridge JavaScript nella pagina
-    if (webView)
-    {
-        // Inietta script che crea window.__openclawBridge
-        // Questo deve essere fatto prima che React inizializzi
-        juce::String bridgeScript = R"(
-            if (typeof window.__openclawBridge === 'undefined') {
-                window.__openclawBridge = {
-                    receiveMessage: function(jsonStr) {
-                        try {
-                            const msg = JSON.parse(jsonStr);
-                            window.dispatchEvent(new CustomEvent('openclaw-message', { detail: msg }));
-                        } catch (e) {
-                            console.error('[OpenClaw] Failed to parse message:', e);
-                        }
-                    },
-                    sendMessage: function(msg) {
-                        const jsonStr = JSON.stringify(msg);
-                        window.location.href = 'app://message/' + encodeURIComponent(jsonStr);
-                    }
-                };
-                console.log('[OpenClaw] Bridge initialized');
-            }
-        )";
-        
-        // Non possiamo usare evaluateJavaScript (privato), quindi lo facciamo via goToURL
-        juce::String jsCode = "javascript:" + bridgeScript;
-        webView->goToURL(jsCode);
-        
-        // Notifica al frontend che il plugin è pronto
-        webViewBridge.sendToFrontend({
-            {"type", "plugin.init"},
-            {"id", nullptr},
-            {"timestamp", juce::Time::currentTimeMillis()},
-            {"payload", {
-                {"version", "1.0.0"},
-                {"capabilities", {"widgets", "ai", "osc"}}
-            }}
-        });
-    }
-}
-
-//==============================================================================
 // Gestione messaggi dal frontend
 
 void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& message)
@@ -256,7 +262,6 @@ void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& m
     // Gestione per tipo
     if (msgType == "plugin.init")
     {
-        // UI pronta, può ricevere dati
         DBG("[PluginEditor] UI React pronta");
         
         // Invia stato attuale
@@ -264,31 +269,22 @@ void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& m
     }
     else if (msgType == "daw.command")
     {
-        // Comando per il DAW
         if (message.contains("payload") && message["payload"].contains("command"))
         {
             std::string cmd = message["payload"]["command"];
             DBG("[PluginEditor] Comando DAW: " + juce::String(cmd.data()));
-            
-            // TODO: Implementare comandi OSC verso DAW
-            // audioProcessor.sendOscCommand(...);
         }
     }
     else if (msgType == "daw.request")
     {
-        // Richiesta info dal DAW
         if (message.contains("payload") && message["payload"].contains("request"))
         {
             std::string req = message["payload"]["request"];
             DBG("[PluginEditor] Richiesta DAW: " + juce::String(req.data()));
-            
-            // Rispondi con i dati disponibili
-            // TODO: Implementare risposte
         }
     }
     else if (msgType == "ai.prompt")
     {
-        // Richiesta AI
         if (message.contains("payload") && message["payload"].contains("prompt"))
         {
             std::string prompt = message["payload"]["prompt"];
@@ -296,17 +292,14 @@ void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& m
             
             DBG("[PluginEditor] Prompt AI: " + juce::String(prompt.data()).substring(0, 50));
             
-            // Invia al processor che gestisce l'AI
             audioProcessor.sendAiPrompt(juce::String(prompt.data()));
             
-            // TODO: Rispondere con stream o risposta completa
             webViewBridge.sendAIResponse(juce::String(reqId.data()), 
                 "AI non ancora implementata. Prompt ricevuto: " + juce::String(prompt.data()).substring(0, 100));
         }
     }
     else if (msgType == "widget.valueChange")
     {
-        // Widget modificato dall'utente
         if (message.contains("payload"))
         {
             auto& payload = message["payload"];
@@ -314,14 +307,7 @@ void OpenClawAudioProcessorEditor::handleFrontendMessage(const nlohmann::json& m
             float value = payload.value("value", 0.0f);
             
             DBG("[PluginEditor] Widget " + juce::String(widgetId.data()) + " = " + juce::String(value));
-            
-            // TODO: Mappare a parametro DAW
         }
-    }
-    else if (msgType == "config.get" || msgType == "config.set")
-    {
-        // Gestione configurazione
-        DBG("[PluginEditor] Config: " + msgType);
     }
     else
     {
@@ -339,7 +325,6 @@ void OpenClawAudioProcessorEditor::paint(juce::Graphics& g)
 {
     if (!webView)
     {
-        // Solo per fallback UI
         g.fillAll(juce::Colours::darkgrey);
         g.setColour(juce::Colours::black.withAlpha(0.3f));
         g.fillRect(0, 0, getWidth(), 40);
@@ -350,12 +335,10 @@ void OpenClawAudioProcessorEditor::resized()
 {
     if (webView)
     {
-        // WebView occupa tutto lo spazio
         webView->setBounds(0, 0, getWidth(), getHeight());
     }
     else
     {
-        // Layout fallback UI
         titleLabel.setBounds(0, 10, getWidth(), 30);
         
         int sliderWidth = 100;

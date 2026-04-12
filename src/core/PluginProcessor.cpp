@@ -7,6 +7,8 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "OscHandler.h"
+#include "AiEngine.h"
 
 //==============================================================================
 OpenClawAudioProcessor::OpenClawAudioProcessor()

@@ -47,7 +47,7 @@ juce_add_plugin(OpenClawVSTPlugin
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
-    FORMATS VST3 Standalone
+    FORMATS VST3
     PRODUCT_NAME "OpenClaw VST Bridge AI"
 )
 
@@ -81,13 +81,14 @@ target_link_libraries(OpenClawVSTPlugin
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_basics
+        # GUI - ordine importante: basics prima di extra
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        juce::juce_graphics
         # Core
         juce::juce_core
         juce::juce_data_structures
         juce::juce_events
-        # GUI
-        juce::juce_graphics
-        juce::juce_gui_basics
         # HTTP
         ${CURL_LIBRARIES}
 )
@@ -101,6 +102,7 @@ target_include_directories(OpenClawVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     ${CURL_INCLUDE_DIRS}
 )
 

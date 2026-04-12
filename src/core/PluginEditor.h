@@ -11,9 +11,28 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "../ui/WebViewBridge.h"
 
+// Forward declaration
+class OpenClawAudioProcessor;
+
 //==============================================================================
-class OpenClawAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                      public juce::WebBrowserComponent::Listener
+// Custom WebBrowserComponent che espone i listener methods
+class OpenClawWebBrowserComponent : public juce::WebBrowserComponent
+{
+public:
+    OpenClawWebBrowserComponent();
+    
+    // Callback che può essere impostata dall'esterno
+    std::function<bool(const juce::String&)> onPageAboutToLoad;
+    std::function<void(const juce::String&)> onPageFinishedLoading;
+    
+protected:
+    // Override dei metodi protected di WebBrowserComponent
+    bool pageAboutToLoad(const juce::String& url) override;
+    void pageFinishedLoading(const juce::String& url) override;
+};
+
+//==============================================================================
+class OpenClawAudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
     OpenClawAudioProcessorEditor(OpenClawAudioProcessor&);
@@ -24,10 +43,6 @@ public:
     void resized() override;
 
     //==============================================================================
-    // WebBrowserComponent::Listener
-    bool pageAboutToLoad(const juce::String& url) override;
-    void pageFinishedLoading(const juce::String& url) override;
-    
     // Gestione messaggi dal frontend
     void handleFrontendMessage(const nlohmann::json& message);
     
@@ -42,7 +57,7 @@ private:
     WebViewBridge webViewBridge;
     
     // UI Components
-    std::unique_ptr<juce::WebBrowserComponent> webView;
+    std::unique_ptr<OpenClawWebBrowserComponent> webView;
     
     // Fallback UI (quando WebView non disponibile)
     juce::Label titleLabel;

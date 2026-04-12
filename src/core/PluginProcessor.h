@@ -9,8 +9,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
-#include "OscHandler.h"
-#include "AiEngine.h"
+
+// Forward declarations
+class OscHandler;
+class AiEngine;
 
 //==============================================================================
 class OpenClawAudioProcessor : public juce::AudioProcessor
