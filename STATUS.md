@@ -1,6 +1,6 @@
 # OpenClaw VST Bridge AI - Stato Progetto
 
-**Ultimo aggiornamento:** 2026-04-12 11:20
+**Ultimo aggiornamento:** 2026-04-12 11:31
 
 ---
 
@@ -12,6 +12,35 @@
 | WebViewBridge C++ | ✅ | Implementazione completa con shortcuts |
 | PluginEditor WebView | ✅ | Integrazione WebView + fallback UI |
 | JavaScript Bridge | ✅ | `openclaw-bridge.js` per React |
+| **Test Protocollo JSON** | ✅ | Python test suite - 11/11 passati |
+| Fix CMakeLists.txt | ✅ | Ordine linking corretto (gui_basics prima di gui_extra) |
+
+---
+
+## 🧪 Test Protocollo JSON v1.0
+
+**File:** `Tools/test_protocol_json.py`
+
+**Comando:** `python3 Tools/test_protocol_json.py`
+
+**Risultati:** ✅ 11/11 test passati
+
+Messaggi testati:
+- ✅ DAW Transport (play/stop)
+- ✅ DAW Track
+- ✅ DAW Meter
+- ✅ OSC Message
+- ✅ AI Response
+- ✅ Widget Create
+- ✅ Plugin Init
+- ✅ DAW Command (play, setVolume)
+- ✅ AI Prompt
+
+Error handling verificato:
+- ❌ Messaggio senza tipo (rilevato)
+- ❌ Tipo non valido (rilevato)
+- ❌ Payload mancante (rilevato)
+- ❌ daw.track senza trackId (rilevato)
 
 ---
 
@@ -44,17 +73,36 @@
 
 ---
 
+## ⚠️ Build C++ - Note
+
+**Problema:** Build JUCE richiede ~4GB RAM
+
+**Soluzione:** 
+- Rimosso Standalone (solo VST3)
+- Ordine linking corretto: `juce_gui_basics` prima di `juce_gui_extra`
+
+**Per buildare:**
+```bash
+cd /home/carlo/progetti/OpenClaw-VST-Bridge
+rm -rf build
+cmake -B build -DJUCE_ROOT=/home/carlo/SDKs/JUCE
+cmake --build build --config Release -j1  # usa solo 1 core
+```
+
+**Richiesto:** Chiudere applicazioni pesanti prima di buildare
+
+---
+
 ## ✅ Completato (Linux)
 
 | Componente | Stato | Note |
 |------------|-------|------|
-| Build VST3 | ✅ | Compilato con successo |
-| Build Standalone | ✅ | Compilato con successo |
+| Build VST3 | ⏳ | CMakeLists fixato, build richiede più memoria |
 | OscHandler | ✅ | Bidirezionale (send/receive) |
 | AiEngine | ⚠️ | Struttura base HTTP, POST cURL non implementato |
 | WebViewBridge | ✅ | Header + implementation completi v1.0 |
 | PluginEditor WebView | ✅ | Integrazione completa con fallback |
-| CMakeLists.txt | ✅ | Configurato (cURL, JUCE, Linux) |
+| CMakeLists.txt | ✅ | Fixato ordine moduli JUCE |
 | Git | ✅ | Pushato su master |
 
 ---
@@ -72,10 +120,6 @@
 | Test Ableton | ⏳ Da fare | Verificare caricamento plugin |
 | Rilevare eventi DAW | ❓ Bloccato | Edo deve confermare se sa come fare |
 
-**Problema:** La TODO list promessa da Edo non è stata pushata. Heartbroken e Edo lavorano senza task assegnati.
-
-**Soluzione temporanea:** Vedi `PENDING_TODO.md` con task aggiornati.
-
 ---
 
 ## 🔴 Bloccante: Task Team Ridefiniti
@@ -91,11 +135,12 @@
 
 ## ❌ Mancante
 
-1. **Build Windows** - Edo sta compilando
-2. **Test VST3 in DAW** - Carlo (Reaper) e Edo (Ableton)
-3. **✅ Completato: Comunicazione WebView** - Protocollo C++↔JS v1.0
-4. **UI React** - Da creare (Heartbroken) - usa `openclaw-bridge.js`
-5. **AiEngine POST** - Implementare cURL reale per Ollama
+1. **Build Linux VST3** - Richiede più memoria (~4GB)
+2. **Test VST3 in Reaper** - Carlo (quando build funziona)
+3. **Test Ableton Windows** - Edo
+4. **✅ Completato: Comunicazione WebView** - Protocollo C++↔JS v1.0 testato
+5. **UI React** - Da creare (Heartbroken) - usa `openclaw-bridge.js`
+6. **AiEngine POST** - Implementare cURL reale per Ollama
 
 ---
 
@@ -103,33 +148,40 @@
 
 ```
 Documentazione/protocol-json-v1.md      # Nuovo: protocollo completo
-src/ui/WebViewBridge.h                 # Modificato: v1.0 API
-src/ui/WebViewBridge.cpp                 # Modificato: implementazione completa
-src/core/PluginEditor.h                  # Modificato: WebView integration
-src/core/PluginEditor.cpp                # Modificato: WebView + fallback
-webview-ui/src/openclaw-bridge.js      # Nuovo: bridge JavaScript React
+Tools/test_protocol_json.py             # Nuovo: test suite Python
+src/ui/WebViewBridge.h                  # Modificato: v1.0 API
+src/ui/WebViewBridge.cpp                # Modificato: implementazione completa
+src/core/PluginEditor.h                 # Modificato: WebView integration
+src/core/PluginEditor.cpp               # Modificato: WebView + fallback
+src/core/PluginProcessor.h              # Modificato: forward declarations
+src/core/PluginProcessor.cpp            # Modificato: include fix
+cmake/CMakeLists.txt                    # Modificato: fix ordine linking
+third_party/nlohmann/json.hpp           # Nuovo: libreria JSON
+webview-ui/src/openclaw-bridge.js       # Nuovo: bridge JavaScript React
 ```
 
 ---
 
-## Prossimi Passi
+## 🎯 Prossimi Passi
 
 | # | Task | Chi | Priorità |
 |---|------|-----|----------|
-| 1 | Testare build C++ con nuovo bridge | Carlo | Alta |
+| 1 | Build VST3 Linux (con più RAM) | Carlo | Alta |
 | 2 | Testare VST3 in Reaper | Carlo | Alta |
 | 3 | Creare UI React base (usando bridge) | Heartbroken | Alta |
-| 4 | Implementare POST cURL in AiEngine | Aura | Media |
-| 5 | Testare OSC bidirezionale in DAW | Carlo/Edo | Media |
+| 4 | Test Ableton Windows | Edo | Alta |
+| 5 | Implementare POST cURL in AiEngine | Aura | Media |
+| 6 | Testare OSC bidirezionale in DAW | Carlo/Edo | Media |
 
 ---
 
 ## Commits Recenti
 
+- `3100ba1` - AURA: Add test suite protocollo JSON v1.0
+- `ce7b93b` - AURA: Fix ordine linking JUCE, build solo VST3
+- `45d00c4` - AURA: Protocollo JSON C++↔JavaScript v1.0 completo
 - `be777b8` - AURA: Fix include JUCE per Windows
 - `4b8ff9a` - AURA: Rimuovi evaluateJavaScript privato, usa goToURL
-- `6321e7e` - AURA: WebViewBridge completo con nlohmann-json
-- `ced6e52` - AURA: Fix include path per src/ui/
 
 ---
 
