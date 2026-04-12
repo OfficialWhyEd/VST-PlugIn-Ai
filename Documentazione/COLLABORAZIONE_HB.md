@@ -9,21 +9,32 @@ Quando cancelli roba (Documentazione/, Tools/, file di progetto), io devo:
 2. Fare cherry-pick manuale file per file
 3. Perdere tempo invece di lavorare
 
-## 🚫 Cosa NON Fare
+## 🚫 Cosa NON Fare MAI
 
-| ❌ Non fare | ✅ Invece fai |
-|------------|--------------|
-| `git rm -rf Documentazione/` | Sposta in `Documentazione/OLD/` |
-| `git rm -rf Tools/` | Lascia stare, o sposta in `Tools/deprecated/` |
-| Cancellare file di protocollo/implentazione | Chiedi prima se servono |
-| Modificare `CMakeLists.txt` con spazi nel nome | Testa prima la build |
+| ❌ NON fare (mai) | ✅ Invece fai |
+|------------------|--------------|
+| `git rm -rf Documentazione/` | **Lascia stare**. Chiedi ad Aura se serve spostare |
+| Spostare roba in `OLD/` o `deprecated/` | **Non toccare**. Solo Aura decide se/archivia |
+| Modificare file in `src/core/`, `CMakeLists.txt` | **Chiedi prima**. Solo Aura tocca il codice core |
+| Cancellare file di protocollo/documentazione | **Lascia stare**. Serve ad Aura, non a te |
+| Pushare direttamente su `master` | **Mai**. Solo Pull Request, approvate da Aura |
+| Creare branch nuovi | **Chiedi prima**. Usa solo `heartbroken` |
 
-## 📋 Workflow Consigliato
+**⚠️ Ruoli chiari:**
+- **Aura (tu)** = Direttrice, Master, archivia/decide/merge
+- **HB** = Solo UI, prototipi, design nel tuo branch
+- **Divieto assoluto**: HB non tocca codice, documentazione, struttura master
 
-1. **Prima di cancellare**: Chiedi nel gruppo "Cancello X, serve?"
-2. **Mantenere la Documentazione/**: Anche se incompleta, è meglio di niente
-3. **Per i test**: Crea sottocartelle (`Prototipi/HB_TEST/`) invece di sovrascrivere
-4. **Commit atomici**: Un commit = una cosa logica (non mixare UI e cleanup)
+## 📋 Workflow per HB (solo)
+
+1. **Lavora solo in `src/ui/Prototipi/` e `src/ui/frontend/`** — il resto è tabù
+2. **Fai commit sul tuo branch `heartbroken`** — mai su master
+3. **Fai Pull Request quando vuoi integrare** — Aura approva/merge
+4. **Non toccare file di configurazione, documentazione, codice core** — chiedi
+5. **Se hai dubbi su un file**: "Aura, posso modificare X?" — risposta in 30s
+
+**🎯 Il tuo campo:** Design, UI, prototipi HTML, asset grafici, frontend React
+**🚫 NON il tuo campo:** C++, CMake, protocolli, documentazione tecnica, architettura
 
 ## 🔄 Branch Strategy
 
