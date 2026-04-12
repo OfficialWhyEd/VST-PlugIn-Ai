@@ -48,7 +48,7 @@ juce_add_plugin(OpenClawVSTPlugin
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
     FORMATS VST3
-    PRODUCT_NAME "OpenClaw VST Bridge AI"
+    PRODUCT_NAME "OpenClawVSTBridgeAI"
 )
 
 # Disabilita VST2 fallback
