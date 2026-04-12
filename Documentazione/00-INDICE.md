@@ -9,13 +9,35 @@
 
 ## 📚 Documenti Principali
 
+### 📋 Inizio Qui
+- **GUIDA-RAPIDA.md** (root) - Regole sacre, workflow git, dove trovare le cose
+- **WORKFLOW.md** (root) - Fonte della verità per collaborazione Aura/HB
+
+### 📑 Documentazione di Progetto
 1. **01-EXECUTIVE-SUMMARY.md** - Sintesi critica del progetto, rischi e opportunità
 2. **02-ANALISI-MERCATO.md** - Prodotti simili esistenti e gap competitivi
-3. **03-ROADMAP-FASI.md** - Piano di sviluppo a fasi con milestone
+3. **03-ROADMAP-FASI.md** - Piano di sviluppo a fasi con milestone ⭐ AGGIORNARE DOPO OGNI PUSH
 4. **04-SPECIFICHE-TECNICHE.md** - Architettura, protocolli e scelte tecnologiche
 5. **05-REQUISITI.md** - Requisiti funzionali e non-funzionali dettagliati
 6. **06-BRAINSTORMING.md** - Idee aggiuntive e feature future
 7. **07-CHANGELOG.md** - Versioni e modifiche
+
+### 🤝 Collaborazione
+- **08-COLLABORAZIONE-HB.md** - Regole tecniche per Heartbroken (complementa WORKFLOW.md)
+
+### 🔧 Tecnico
+- **architettura-ponte.md** - Decisione architettura OSC-Web
+- **protocol-json-v1.md** - Protocollo JSON C++ ↔ JavaScript v1.0 (definitivo)
+- **NOTE_TECNICHE_PROTOCOLI.md** - Note implementazione OSC
+
+### 📊 Stato e Task (root)
+- **STATUS.md** - Stato attuale progetto
+- **PENDING_TODO.md** - Task da completare (sincronizzare con roadmap)
+- **GUIDA-RAPIDA.md** - Regole sacre e navigazione documentazione
+- **WORKFLOW.md** - Fonte della verità per collaborazione git
+- **Comunicazioni.md** - Messaggi tra team members
+- **README-BUILD.md** - Istruzioni build cross-platform
+- **TEST-GUIDE.md** - Guida test per Edo/HB
 
 ---
 
@@ -61,4 +83,4 @@ OpenClaw-VST-Bridge-AI/
 
 ---
 
-*Questa documentazione è in continuo aggiornamento. Ultima modifica: 2026-04-09*
+*Questa documentazione è in continuo aggiornamento. Ultima modifica: 2026-04-12*
