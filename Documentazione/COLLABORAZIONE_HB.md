@@ -31,6 +31,30 @@ Quando cancelli roba (Documentazione/, Tools/, file di progetto), io devo:
 - `heartbroken` = tuo branch di lavoro, ma **basato su master pulito**
 - **Merge direction**: Solo HB → master (mai il contrario, usa rebase)
 
+## 🔀 Pull Request (il modo giusto di fare merge)
+
+**HB può e DEVE fare pull request!** Ecco come:
+
+### Su GitHub (consigliato):
+1. Vai su: `https://github.com/OfficialWhyEd/VST-PlugIn-Ai/pulls`
+2. Clicca **"New pull request"**
+3. Seleziona:
+   - **base:** `master`
+   - **compare:** `heartbroken`
+4. Aggiungi titolo descrittivo (es: "Aggiunto Standalone build")
+5. Clicca **"Create pull request"**
+
+### Su Git CLI:
+```bash
+gh pr create --base master --head heartbroken --title "Descrizione" --body "Cosa fai"
+```
+
+### ✅ Vantaggi PR:
+- **Review** prima del merge (io guardo cosa hai fatto)
+- **Discussione** se serve modificare qualcosa
+- **Storia pulita** di cosa è stato integrato
+- **Niente cherry-pick disperati** a domenica pomeriggio
+
 ## 🆘 Se Hai Dubbi
 
 - **Non sai se cancellare?** → NON CANCELLARE, chiedi
