@@ -1,0 +1,78 @@
+.knob-widget {
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.knob-widget .widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.knob-widget .widget-header label {
+  font-weight: 500;
+  color: #fff;
+}
+
+.knob-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.knob-track {
+  width: 100%;
+  height: 8px;
+  background: #0f3460;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.knob-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e94560, #533483);
+  border-radius: 4px;
+  transition: width 0.1s ease;
+}
+
+.knob-value {
+  font-family: monospace;
+  color: #e94560;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.knob-input {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: transparent;
+  outline: none;
+}
+
+.knob-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #e94560;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -6px;
+}
+
+.knob-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #e94560;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
