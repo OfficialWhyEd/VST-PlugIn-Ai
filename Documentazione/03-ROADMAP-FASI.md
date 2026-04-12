@@ -64,13 +64,15 @@ Parametro: da valore A a valore B in T secondi con curva E
 - Design base UI/UX
 
 ### Tasks
-- [ ] Setup repo GitHub (monorepo con submodules)
+- [x] Setup repo GitHub (monorepo con submodules)
 - [ ] Setup CI/CD (GitHub Actions per build Windows/macOS/Linux)
-- [ ] Scelta linguaggio definitiva (vedi 04-SPECIFICHE-TECNICHE.md)
-- [ ] Setup JUCE o equivalente framework
+- [x] Scelta linguaggio definitiva: C++/JUCE + React
+- [x] Setup JUCE o equivalente framework
 - [ ] Wireframe UI in Figma (minimo 3 pagine: main, settings, AI panel)
-- [ ] Setup Ableton Live per testing (versione trial o owned)
-- [ ] DocumentareOSC mapping Ableton via Max4Live
+- [x] Setup Ableton Live per testing (build Windows completata da Edo)
+- [ ] Documentare OSC mapping Ableton via Max4Live
+- [x] Decisione architettura: Ponte OSC-Web (UI React in browser separato)
+- [x] Protocollo JSON v1.0 definitivo e testato (11/11)
 
 ### Deliverable
 - Repository configurato con branch protection
@@ -95,22 +97,29 @@ Parametro: da valore A a valore B in T secondi con curva E
 ### Tasks
 
 #### Week 1-2: Plugin Skeleton
-- [ ] Setup progetto JUCE con template VST3
-- [ ] GUI window base (vuota, con placeholder)
-- [ ] Plugin si carica in Ableton senza crash
-- [ ] Export funzionante per Windows e macOS
+- [x] Setup progetto JUCE con template VST3
+- [x] GUI window base (fallback UI JUCE funzionante)
+- [x] Plugin si carica in Reaper senza crash (Linux)
+- [x] Build Linux VST3 completata
+- [x] Build Windows completata (Edo)
+- [ ] Test in Ableton (Edo)
 
 #### Week 3-4: OSC Communication
-- [ ] OSC server interno (porta configurabile, default 9000)
+- [x] OscHandler placeholder implementato (bidirezionale)
+- [ ] OSC server completo (porta 9000)
 - [ ] OSC client per inviare messaggi
 - [ ] Mappatura parametri plugin → OSC address
 - [ ] Test con TouchOSC o osc-send tool
+- [x] WebViewBridge C++ implementato (per architettura ponte)
 
 #### Week 5-6: GUI Base
 - [ ] 8 knob parametri con label
 - [ ] Valore display per ogni knob
 - [ ] Resizable window
 - [ ] Settings panel minimo (porta OSC, enable/disable)
+- [x] UI web esterna: architettura ponte decisa (React + OSC)
+- [ ] Heartbroken: setup React + server dev
+- [ ] Heartbroken: client OSC in React
 
 ### Deliverable
 - File .vst3 che si carica in Ableton Live
@@ -451,4 +460,5 @@ Fase 6:                                      ████
 
 ---
 
-*Questo piano è living document. Aggiornare dopo ogni milestone.*
+*Questo piano è living document. Aggiornare dopo ogni push o modifica significativa.*
+*Ultimo aggiornamento: 2026-04-12 — Fase 0 completata, Fase 1 in corso (skeleton + OSC parziale)*
