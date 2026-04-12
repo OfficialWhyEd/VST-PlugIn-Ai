@@ -69,21 +69,18 @@ OpenClawAudioProcessorEditor::~OpenClawAudioProcessorEditor()
 //==============================================================================
 void OpenClawAudioProcessorEditor::loadUI()
 {
+    // TEMP: Forza fallback UI per debug
+    // La WebView potrebbe causare crash, usiamo UI nativa JUCE
+    DBG("[PluginEditor] FORZATO fallback UI (debug)");
+    setupFallbackUI();
+    
+    // Codice originale commentato:
     // Controlla se esiste la build della UI React
-    juce::File uiBuildDir = juce::File::getCurrentWorkingDirectory()
-        .getChildFile("webview-ui")
-        .getChildFile("dist");
-    
-    // Alternativa: cerca nella cartella del plugin
-    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentApplicationFile)
-        .getParentDirectory();
-    juce::File altUiDir = pluginDir.getChildFile("webview-ui").getChildFile("dist");
-    
-    // In development, prova anche localhost
-    bool hasWebUI = uiBuildDir.exists() || altUiDir.exists();
-    
-    // Per ora usiamo sempre la WebView (anche per localhost development)
-    setupWebView();
+    // juce::File uiBuildDir = juce::File::getCurrentWorkingDirectory()
+    //     .getChildFile("webview-ui")
+    //     .getChildFile("dist");
+    // bool hasWebUI = uiBuildDir.exists();
+    // if (hasWebUI) { setupWebView(); } else { setupFallbackUI(); }
 }
 
 void OpenClawAudioProcessorEditor::setupWebView()
