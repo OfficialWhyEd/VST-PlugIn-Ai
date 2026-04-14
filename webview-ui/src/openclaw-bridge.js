@@ -1,8 +1,21 @@
 /**
- * OpenClaw Bridge - JavaScript Bridge per comunicazione con C++
+ * OpenClaw Bridge - JavaScript Bridge per comunicazione con Plugin VST via WebSocket
  * 
- * Da includere nel progetto React (webview-ui/src/)
+ * Sostituisce il vecchio approccio app://message/ (WebView JUCE)
+ * con WebSocket RFC 6455 per connettersi al WebSocketServer nel plugin.
+ * 
+ * Il bridge può connettersi a:
+ * - localhost:8080 (plugin in production/standalone)
+ * - ws://localhost:8080 (stesso)
+ * 
+ * Usage:
+ *   import { openclaw } from './openclaw-bridge.js';
+ *   openclaw.connect();
  */
+
+const WS_DEFAULT_URL = 'ws://localhost:8080';
+const RECONNECT_INTERVAL_MS = 2000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 /**
  * Genera UUID v4
@@ -16,61 +29,121 @@ function generateUUID() {
 }
 
 /**
+ * Stato connessione
+ */
+export const ConnectionState = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+  ERROR: 'error'
+};
+
+/**
  * Classe principale del bridge OpenClaw
  */
 class OpenClawBridge {
   constructor() {
+    this.ws = null;
+    this.url = WS_DEFAULT_URL;
+    this.state = ConnectionState.DISCONNECTED;
     this.messageListeners = new Map();
     this.pendingRequests = new Map();
     this.isInitialized = false;
     this.version = '1.0.0';
-    
+    this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
+    this.lastConnectedAt = null;
+
     // Bind metodi
-    this.receiveMessage = this.receiveMessage.bind(this);
-    this.sendMessage = this.sendMessage.bind(this);
-    
-    // Setup listener globale
-    this._setupGlobalListener();
+    this._handleMessage = this._handleMessage.bind(this);
+    this._handleOpen = this._handleOpen.bind(this);
+    this._handleClose = this._handleClose.bind(this);
+    this._handleError = this._handleError.bind(this);
   }
-  
+
   /**
-   * Inizializza il bridge
+   * Connetti al WebSocket server del plugin
+   * @param {string} url - URL del WebSocket server (default: ws://localhost:8080)
+   * @returns {Promise} - Resolves quando connesso
    */
-  init() {
-    if (this.isInitialized) return;
-    
-    // Esponi globalmente per C++
-    window.__openclawBridge = {
-      receiveMessage: this.receiveMessage,
-      sendMessage: this.sendMessage
-    };
-    
-    this.isInitialized = true;
-    console.log('[OpenClaw] Bridge v' + this.version + ' inizializzato');
-    
-    // Notifica C++ che siamo pronti
-    this.sendMessage('plugin.init', {
-      version: this.version,
-      capabilities: ['widgets', 'ai', 'osc']
+  connect(url = WS_DEFAULT_URL) {
+    return new Promise((resolve, reject) => {
+      if (this.state === ConnectionState.CONNECTED) {
+        resolve();
+        return;
+      }
+
+      this.url = url;
+      this.state = ConnectionState.CONNECTING;
+      console.log('[OpenClaw] Connessione a ' + url + '...');
+
+      try {
+        this.ws = new WebSocket(url);
+
+        this.ws.onopen = (event) => {
+          this._handleOpen(event);
+          resolve();
+        };
+
+        this.ws.onclose = (event) => {
+          this._handleClose(event);
+        };
+
+        this.ws.onerror = (event) => {
+          this._handleError(event);
+          reject(new Error('WebSocket error'));
+        };
+
+        this.ws.onmessage = (event) => {
+          this._handleMessage(event);
+        };
+
+      } catch (e) {
+        this.state = ConnectionState.ERROR;
+        console.error('[OpenClaw] Errore connessione:', e);
+        reject(e);
+      }
     });
   }
-  
+
   /**
-   * Riceve messaggi da C++
+   * Disconnetti dal WebSocket server
    */
-  receiveMessage(jsonString) {
-    try {
-      const message = JSON.parse(jsonString);
-      this._handleMessage(message);
-    } catch (e) {
-      console.error('[OpenClaw] Errore parsing messaggio:', e);
+  disconnect() {
+    this._clearReconnectTimer();
+    this.reconnectAttempts = 0;
+
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.close(1000, 'Client disconnect');
+      this.ws = null;
     }
+
+    this.state = ConnectionState.DISCONNECTED;
+    console.log('[OpenClaw] Disconnesso');
   }
-  
+
   /**
-   * Invia messaggio a C++
+   * Verifica se connesso
+   */
+  isConnected() {
+    return this.state === ConnectionState.CONNECTED && this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Invia messaggio al plugin via WebSocket
+   * @param {string} type - Tipo messaggio
+   * @param {object} payload - Payload JSON
+   * @param {object} options - Opzioni {id, onResponse, timeout}
+   * @returns {string} - Message ID
    */
   sendMessage(type, payload = {}, options = {}) {
+    if (!this.isConnected()) {
+      console.warn('[OpenClaw] Non connesso, messaggio non inviato:', type);
+      return null;
+    }
+
     const id = options.id || generateUUID();
     const message = {
       type,
@@ -78,7 +151,7 @@ class OpenClawBridge {
       timestamp: Date.now(),
       payload
     };
-    
+
     // Se c'è un callback per risposta, salva
     if (options.onResponse) {
       this.pendingRequests.set(id, {
@@ -90,24 +163,45 @@ class OpenClawBridge {
         }, options.timeout || 30000)
       });
     }
-    
-    // Invia a C++ via location.href
-    const jsonStr = JSON.stringify(message);
-    window.location.href = 'app://message/' + encodeURIComponent(jsonStr);
-    
+
+    // Invia via WebSocket
+    try {
+      this.ws.send(JSON.stringify(message));
+      console.log('[OpenClaw] Inviato:', type, id ? `(id=${id})` : '');
+    } catch (e) {
+      console.error('[OpenClaw] Errore invio:', e);
+    }
+
     return id;
   }
-  
+
+  /**
+   * Alias per sendMessage - sends a raw JSON message
+   */
+  send(jsonMessage) {
+    if (!this.isConnected()) {
+      console.warn('[OpenClaw] Non connesso');
+      return null;
+    }
+    try {
+      this.ws.send(JSON.stringify(jsonMessage));
+    } catch (e) {
+      console.error('[OpenClaw] Errore invio:', e);
+    }
+  }
+
   /**
    * Registra listener per un tipo di messaggio
+   * @param {string} type - Tipo messaggio ('daw.transport', 'ai.response', ecc.)
+   * @param {function} callback - Callback(payload, fullMessage)
+   * @returns {function} - Unsubscribe function
    */
   on(type, callback) {
     if (!this.messageListeners.has(type)) {
       this.messageListeners.set(type, []);
     }
     this.messageListeners.get(type).push(callback);
-    
-    // Ritorna funzione per unsubscribe
+
     return () => {
       const listeners = this.messageListeners.get(type);
       const index = listeners.indexOf(callback);
@@ -116,9 +210,9 @@ class OpenClawBridge {
       }
     };
   }
-  
+
   /**
-   * Rimuovi tutti i listener
+   * Rimuovi tutti i listener per un tipo
    */
   off(type) {
     if (type) {
@@ -127,19 +221,41 @@ class OpenClawBridge {
       this.messageListeners.clear();
     }
   }
-  
+
+  /**
+   * Registra listener per tutti i messaggi
+   * @param {function} callback - Callback(message)
+   * @returns {function} - Unsubscribe
+   */
+  onAny(callback) {
+    if (!this.messageListeners.has('*')) {
+      this.messageListeners.set('*', []);
+    }
+    this.messageListeners.get('*').push(callback);
+
+    return () => {
+      const listeners = this.messageListeners.get('*');
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }
+
   /**
    * Richiede info al DAW
    */
-  requestDAWInfo(requestType, targetId = null) {
+  requestDAWInfo(requestType, trackId = null) {
     return new Promise((resolve, reject) => {
-      const id = this.sendMessage('daw.request', {
-        request: requestType,
-        trackId: targetId
-      }, {
+      const payload = { request: requestType };
+      if (trackId !== null) {
+        payload.trackId = trackId;
+      }
+
+      this.sendMessage('daw.request', payload, {
         onResponse: (response) => {
           if (response.error) {
-            reject(response.error);
+            reject(new Error(response.error));
           } else {
             resolve(response);
           }
@@ -148,9 +264,11 @@ class OpenClawBridge {
       });
     });
   }
-  
+
   /**
    * Invia comando al DAW
+   * @param {string} command - 'play', 'stop', 'record', 'setVolume', ecc.
+   * @param {object} params - {trackId, value, valueDb, ...}
    */
   sendDAWCommand(command, params = {}) {
     return this.sendMessage('daw.command', {
@@ -158,13 +276,20 @@ class OpenClawBridge {
       ...params
     });
   }
-  
+
   /**
    * Invia prompt all'AI
+   * @param {string} prompt - Testo prompt
+   * @param {object} options - {provider, model, stream, context}
    */
   sendAIPrompt(prompt, options = {}) {
-    const { provider = 'ollama', model = 'llama3.2', stream = false, context = {} } = options;
-    
+    const {
+      provider = 'ollama',
+      model = 'llama3.2',
+      stream = false,
+      context = {}
+    } = options;
+
     return this.sendMessage('ai.prompt', {
       prompt,
       provider,
@@ -176,7 +301,7 @@ class OpenClawBridge {
       timeout: 60000
     });
   }
-  
+
   /**
    * Crea widget dinamico
    */
@@ -189,7 +314,7 @@ class OpenClawBridge {
       ...config
     });
   }
-  
+
   /**
    * Aggiorna widget
    */
@@ -199,14 +324,14 @@ class OpenClawBridge {
       ...values
     });
   }
-  
+
   /**
    * Rimuovi widget
    */
   removeWidget(widgetId) {
     return this.sendMessage('ui.widget.remove', { widgetId });
   }
-  
+
   /**
    * Invia messaggio OSC raw
    */
@@ -217,24 +342,113 @@ class OpenClawBridge {
       valueType
     });
   }
-  
+
   /**
-   * Setup listener globale via CustomEvent
-   * @private
+   * Richiedi configurazione
    */
-  _setupGlobalListener() {
-    window.addEventListener('openclaw-message', (event) => {
-      this._handleMessage(event.detail);
+  getConfig(key) {
+    return new Promise((resolve, reject) => {
+      this.sendMessage('config.get', { key }, {
+        onResponse: (response) => {
+          if (response.error) reject(new Error(response.error));
+          else resolve(response.value);
+        },
+        timeout: 3000
+      });
     });
   }
-  
+
   /**
-   * Gestisce un messaggio ricevuto
-   * @private
+   * Imposta configurazione
    */
-  _handleMessage(message) {
+  setConfig(key, value) {
+    return this.sendMessage('config.set', { key, value });
+  }
+
+  /**
+   * Gets the connection state
+   */
+  getState() {
+    return this.state;
+  }
+
+  /**
+   * Gets connection info
+   */
+  getConnectionInfo() {
+    return {
+      state: this.state,
+      url: this.url,
+      reconnectAttempts: this.reconnectAttempts,
+      lastConnectedAt: this.lastConnectedAt
+    };
+  }
+
+  // ========================
+  // Private Methods
+  // ========================
+
+  _handleOpen(event) {
+    this.state = ConnectionState.CONNECTED;
+    this.reconnectAttempts = 0;
+    this.lastConnectedAt = Date.now();
+    console.log('[OpenClaw] Connesso a', this.url);
+
+    // Esponi globalmente per retrocompatibilità con vecchio codice
+    window.__openclawBridge = {
+      receiveMessage: (jsonString) => {
+        try {
+          const msg = JSON.parse(jsonString);
+          this._handleMessage({ data: jsonString });
+        } catch (e) {
+          console.error('[OpenClaw] Errore parsing:', e);
+        }
+      },
+      sendMessage: this.sendMessage.bind(this),
+      isConnected: this.isConnected.bind(this)
+    };
+
+    // Notifica plugin che siamo pronti
+    this.sendMessage('plugin.init', {
+      version: this.version,
+      capabilities: ['widgets', 'ai', 'osc', 'daw']
+    });
+  }
+
+  _handleClose(event) {
+    const wasConnected = this.state === ConnectionState.CONNECTED;
+    this.state = ConnectionState.DISCONNECTED;
+    console.log('[OpenClaw] Connessione chiusa:', event.code, event.reason);
+
+    // Cleanup
+    this._clearPendingRequests();
+    this.ws = null;
+
+    // Auto-reconnect se non era una chiusura intenzionale
+    if (wasConnected && event.code !== 1000 && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      this._scheduleReconnect();
+    }
+  }
+
+  _handleError(event) {
+    console.error('[OpenClaw] WebSocket error');
+    this.state = ConnectionState.ERROR;
+  }
+
+  _handleMessage(event) {
+    let message;
+    try {
+      message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    } catch (e) {
+      console.error('[OpenClaw] Errore parsing messaggio:', e);
+      return;
+    }
+
     const { type, id, payload } = message;
-    
+
+    // Log per debug
+    console.log('[OpenClaw] Ricevuto:', type, id ? `(id=${id})` : '', payload || '');
+
     // Gestisci risposte pendenti
     if (id && this.pendingRequests.has(id)) {
       const pending = this.pendingRequests.get(id);
@@ -242,8 +456,8 @@ class OpenClawBridge {
       pending.callback(payload);
       this.pendingRequests.delete(id);
     }
-    
-    // Chiama listeners registrati
+
+    // Chiama listeners registrati per tipo
     const listeners = this.messageListeners.get(type);
     if (listeners) {
       listeners.forEach(callback => {
@@ -254,40 +468,96 @@ class OpenClawBridge {
         }
       });
     }
-    
-    // Log per debug
-    console.log('[OpenClaw] Ricevuto:', type, payload);
+
+    // Chiama listeners generici (*)
+    const anyListeners = this.messageListeners.get('*');
+    if (anyListeners) {
+      anyListeners.forEach(callback => {
+        try {
+          callback(message);
+        } catch (e) {
+          console.error('[OpenClaw] Errore in listener (*):', e);
+        }
+      });
+    }
+  }
+
+  _scheduleReconnect() {
+    this._clearReconnectTimer();
+    this.state = ConnectionState.RECONNECTING;
+    this.reconnectAttempts++;
+    console.log('[OpenClaw] Retry connessione tra ' + RECONNECT_INTERVAL_MS + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
+
+    this.reconnectTimer = setTimeout(() => {
+      this.connect(this.url).catch(() => {
+        // Will schedule another reconnect via _handleClose
+      });
+    }, RECONNECT_INTERVAL_MS);
+  }
+
+  _clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  _clearPendingRequests() {
+    this.pendingRequests.forEach(pending => {
+      clearTimeout(pending.timer);
+      pending.callback({ error: 'Connection closed' });
+    });
+    this.pendingRequests.clear();
   }
 }
 
-// Esporta singleton
-export const openclaw = new OpenClawBridge();
+// ========================
+// React Hook
+// ========================
 
-// Hook React
 export function useOpenClaw() {
-  const { useState, useEffect, useCallback } = require('react');
-  
+  const { useState, useEffect, useCallback, useRef } = require('react');
+
   const [transport, setTransport] = useState({
     isPlaying: false,
     isRecording: false,
-    bpm: 120,
-    positionSeconds: 0
+    bpm: 120.0,
+    positionSeconds: 0.0,
+    timeSignature: { numerator: 4, denominator: 4 }
   });
-  
+
   const [tracks, setTracks] = useState([]);
   const [widgets, setWidgets] = useState([]);
   const [aiStatus, setAiStatus] = useState('idle');
-  
+  const [connectionState, setConnectionState] = useState(ConnectionState.DISCONNECTED);
+
+  const bridgeRef = useRef(openclaw);
+
+  // Auto-connect on mount
   useEffect(() => {
-    // Inizializza bridge
-    openclaw.init();
-    
-    // Registra listeners
-    const unsubTransport = openclaw.on('daw.transport', (payload) => {
+    const bridge = bridgeRef.current;
+
+    // Listen for connection state changes
+    const unsubState = bridge.onAny((msg) => {
+      // Check if it's a connection-related message
+      if (msg.type === 'plugin.init') {
+        setConnectionState(ConnectionState.CONNECTED);
+      }
+    });
+
+    // Connect
+    bridge.connect().then(() => {
+      setConnectionState(ConnectionState.CONNECTED);
+    }).catch(() => {
+      setConnectionState(ConnectionState.ERROR);
+    });
+
+    // Register listeners
+    const unsubTransport = bridge.on('daw.transport', (payload) => {
       setTransport(payload);
     });
-    
-    const unsubTrack = openclaw.on('daw.track', (payload) => {
+
+    const unsubTrack = bridge.on('daw.track', (payload) => {
       setTracks(prev => {
         const index = prev.findIndex(t => t.trackId === payload.trackId);
         if (index >= 0) {
@@ -298,68 +568,87 @@ export function useOpenClaw() {
         return [...prev, payload];
       });
     });
-    
-    const unsubWidget = openclaw.on('ui.widget.create', (payload) => {
+
+    const unsubMeter = bridge.on('daw.meter', (payload) => {
+      // Could update track meter display
+      setTracks(prev => prev.map(t =>
+        t.trackId === payload.trackId ? { ...t, meter: payload } : t
+      ));
+    });
+
+    const unsubWidget = bridge.on('ui.widget.create', (payload) => {
       setWidgets(prev => [...prev, payload]);
     });
-    
-    const unsubWidgetUpdate = openclaw.on('ui.widget.update', (payload) => {
-      setWidgets(prev => prev.map(w => 
+
+    const unsubWidgetUpdate = bridge.on('ui.widget.update', (payload) => {
+      setWidgets(prev => prev.map(w =>
         w.widgetId === payload.widgetId ? { ...w, ...payload } : w
       ));
     });
-    
-    const unsubWidgetRemove = openclaw.on('ui.widget.remove', (payload) => {
+
+    const unsubWidgetRemove = bridge.on('ui.widget.remove', (payload) => {
       setWidgets(prev => prev.filter(w => w.widgetId !== payload.widgetId));
     });
-    
-    const unsubAI = openclaw.on('ai.response', () => {
+
+    const unsubAI = bridge.on('ai.response', () => {
       setAiStatus('complete');
     });
-    
-    const unsubAIStream = openclaw.on('ai.stream', () => {
+
+    const unsubAIStream = bridge.on('ai.stream', () => {
       setAiStatus('streaming');
     });
-    
-    const unsubError = openclaw.on('plugin.error', (payload) => {
-      console.error('[OpenClaw] Errore:', payload);
+
+    const unsubError = bridge.on('plugin.error', (payload) => {
+      console.error('[OpenClaw] Plugin error:', payload);
     });
-    
+
     // Cleanup
     return () => {
+      unsubState();
       unsubTransport();
       unsubTrack();
+      unsubMeter();
       unsubWidget();
       unsubWidgetUpdate();
       unsubWidgetRemove();
       unsubAI();
       unsubAIStream();
       unsubError();
+      bridge.disconnect();
     };
   }, []);
-  
-  const sendCommand = useCallback((type, payload) => {
-    return openclaw.sendMessage(type, payload);
+
+  const sendCommand = useCallback((command, params = {}) => {
+    return bridgeRef.current.sendDAWCommand(command, params);
   }, []);
-  
+
   const askAI = useCallback((prompt, options = {}) => {
     setAiStatus('thinking');
-    return openclaw.sendAIPrompt(prompt, options);
+    return bridgeRef.current.sendAIPrompt(prompt, options);
   }, []);
-  
+
   return {
     transport,
     tracks,
     widgets,
     aiStatus,
+    connectionState,
     sendCommand,
     askAI,
-    createWidget: openclaw.createWidget.bind(openclaw),
-    updateWidget: openclaw.updateWidget.bind(openclaw),
-    removeWidget: openclaw.removeWidget.bind(openclaw),
-    sendOSC: openclaw.sendOSC.bind(openclaw),
-    requestDAWInfo: openclaw.requestDAWInfo.bind(openclaw)
+    createWidget: bridgeRef.current.createWidget.bind(bridgeRef.current),
+    updateWidget: bridgeRef.current.updateWidget.bind(bridgeRef.current),
+    removeWidget: bridgeRef.current.removeWidget.bind(bridgeRef.current),
+    sendOSC: bridgeRef.current.sendOSC.bind(bridgeRef.current),
+    requestDAWInfo: bridgeRef.current.requestDAWInfo.bind(bridgeRef.current),
+    connect: () => bridgeRef.current.connect(),
+    disconnect: () => bridgeRef.current.disconnect(),
+    bridge: bridgeRef.current
   };
 }
 
+// ========================
+// Export singleton
+// ========================
+
+export const openclaw = new OpenClawBridge();
 export default openclaw;

@@ -6,36 +6,78 @@
 
 ---
 
-## [Unreleased]
+## [Unreleased] - 2026-04-14
 
 ### Added
 - Initial project setup
-- Documentation structure (7 files)
+- Documentation structure (12 files)
 - Competitive analysis (TouchOSC, MIDI Agent, Ableton MCP, ReaLearn)
-- Technical specifications (C++ + JUCE, React + Tauri)
-- Protocol specifications (OSC, MIDI, VST3)
+- Technical specifications (C++ + JUCE, React + WebSocket)
+- Protocol specifications (OSC, WebSocket, JSON v1.0)
 - Requirements document (functional + non-functional)
 - Roadmap with 6 phases (21 weeks)
+- **VST3 plugin core** with JUCE (compiles on Linux)
+- **Standalone build** format
+- **OscHandler** — bidirectional OSC UDP (RX :9000, TX :9001)
+- **WebSocketServer** — RFC 6455 completo con SHA1 inline (no OpenSSL dep)
+- **OscBridge** — dispatcher bidirezionale OSC↔WebSocket
+- **openclaw-bridge.js** — client React con useOpenClaw hook, auto-reconnect
+- **AiEngine** — supporto Ollama locale (HTTP)
+- **WebViewBridge** — bridge C++↔JS (fallback per WebView interna)
+- **Fallback UI** — JUCE nativa quando WebView non disponibile (Linux)
+- **Protocollo JSON v1.0** — specifica completa C++↔JavaScript
+- **Architettura Ponte OSC-Web** — UI fuori processo via WebSocket
+- **Test suite Python** — 11/11 test protocollo passati
+- **AiEngine v2** — implementazione HTTP POST completa per tutti i provider
+- **AiEngine multi-provider** — Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
+- **OscBridge config AI** — configurazione provider/model/API key via WebSocket
+- **Ollama cloud support** — URL configurabile (non solo localhost)
+- **Session checkpoint** — documento ripresa per sessione successiva (14/04/2026)
 
 ### Changed
+- AiEngine: ora usa `juce::URL` con `withPOSTData()` per request body reali
+- AiEngine: JSON escape manuale per prompt (no external deps)
+- AiEngine multi-provider: tutti i provider cloud richiedono API key (check esplicito)
+
+### In Progress (Non committato)
+- AiEngine ↔ OscBridge integration in PluginProcessor.cpp (80% — manca collegamento callback finale)
+- Test end-to-end DAW ↔ Browser (bloccato da decisione prossima sessione)
+
+### Notes
+- File modificati localmente ma non committati: AiEngine.cpp, AiEngine.h, OscBridge.cpp/.h
+- Checkpoint sessione: `STATUS.md` sezione "Sessione 14/04 - Riepilogo Chiusura"
+- Prossima azione: completare integrazione AI o test end-to-end (da decidere)
+
+---
+
+## [1.0.0] - 2026-07-01 (Planned)
 - Pivot from external bridge to VST3 plugin
-- Primary DAW target: Ableton Live (was Reaper)
-- UI framework: React + WebView (was native JUCE)
+- Primary DAW target: Reaper (tested) + Ableton (planned)
+- UI framework: React + WebSocket (was WebView integrata, crashava su Linux)
 - AI engine: Ollama local + fallback cloud
+- **WebView → fallback**: WebKit/GTK crasha in VST, usato architettura ponte
+- **Standalone build format** aggiunto a CMakeLists
+- **OscBridge** usa callback invece di ereditarietà OscCallback
 
 ### Deprecated
 - Node.js bridge architecture (old version in /progetti/OpenClaw-VST-Bridge)
+- WebView integrata (crasha su Linux, mantenuta come fallback)
 
 ### Removed
 - VST2 support (obsolete)
 - 32-bit support
 - Electron UI option (too heavy)
+- **Duplicato COLLABORAZIONE_HB.md** (consolidato in 08-COLLABORAZIONE-HB.md)
 
 ### Fixed
-- None yet
+- WebView crash su Linux (architettura ponte)
+- Build order JUCE modules
+- Plugin product name senza spazi
+- OscBridge: callback pattern invece di operator() ereditato
 
 ### Security
 - OSC bind only to localhost
+- WebSocket bind only to localhost
 - API keys encrypted in config
 - AI cannot execute system commands
 
@@ -266,4 +308,4 @@ Plugin checks for updates on startup (opt-in).
 
 ---
 
-*This changelog is maintained automatically. Last updated: 2026-04-09*
+*This changelog is maintained automatically. Last updated: 2026-04-14*

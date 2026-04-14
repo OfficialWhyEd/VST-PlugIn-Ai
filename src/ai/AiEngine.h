@@ -45,6 +45,14 @@ public:
     void configure(const Config& config);
     
     //==============================================================================
+    /** Update partial config (preserves other settings) */
+    void updateConfig(std::function<void(Config&)> updater);
+    
+    //==============================================================================
+    /** Get current config */
+    const Config& getConfig() const { return config; }
+    
+    //==============================================================================
     /** Send a prompt and get response (synchronous - blocks!) */
     juce::String sendPrompt(const juce::String& prompt);
     

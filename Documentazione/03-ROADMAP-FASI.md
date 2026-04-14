@@ -64,13 +64,15 @@ Parametro: da valore A a valore B in T secondi con curva E
 - Design base UI/UX
 
 ### Tasks
-- [ ] Setup repo GitHub (monorepo con submodules)
+- [x] Setup repo GitHub (monorepo con submodules)
 - [ ] Setup CI/CD (GitHub Actions per build Windows/macOS/Linux)
-- [ ] Scelta linguaggio definitiva (vedi 04-SPECIFICHE-TECNICHE.md)
-- [ ] Setup JUCE o equivalente framework
+- [x] Scelta linguaggio definitiva: C++/JUCE + React
+- [x] Setup JUCE o equivalente framework
 - [ ] Wireframe UI in Figma (minimo 3 pagine: main, settings, AI panel)
-- [ ] Setup Ableton Live per testing (versione trial o owned)
-- [ ] DocumentareOSC mapping Ableton via Max4Live
+- [x] Setup Ableton Live per testing (build Windows completata da Edo)
+- [ ] Documentare OSC mapping Ableton via Max4Live
+- [x] Decisione architettura: Ponte OSC-Web (UI React in browser separato)
+- [x] Protocollo JSON v1.0 definitivo e testato (11/11)
 
 ### Deliverable
 - Repository configurato con branch protection
@@ -95,22 +97,31 @@ Parametro: da valore A a valore B in T secondi con curva E
 ### Tasks
 
 #### Week 1-2: Plugin Skeleton
-- [ ] Setup progetto JUCE con template VST3
-- [ ] GUI window base (vuota, con placeholder)
-- [ ] Plugin si carica in Ableton senza crash
-- [ ] Export funzionante per Windows e macOS
+- [x] Setup progetto JUCE con template VST3
+- [x] GUI window base (fallback UI JUCE funzionante)
+- [x] Plugin si carica in Reaper senza crash (Linux)
+- [x] Build Linux VST3 completata
+- [x] Build Windows completata (Edo)
+- [ ] Test in Ableton (Edo)
 
 #### Week 3-4: OSC Communication
-- [ ] OSC server interno (porta configurabile, default 9000)
-- [ ] OSC client per inviare messaggi
+- [x] OscHandler implementato (bidirezionale UDP :9000→:9001)
+- [x] WebSocketServer RFC 6455 (TCP :8080, SHA1 inline)
+- [x] OscBridge bidirezionale OSC↔WebSocket
+- [x] openclaw-bridge.js client React con useOpenClaw hook
+- [x] Protocollo JSON v1.0 implementato in C++ e JS
 - [ ] Mappatura parametri plugin → OSC address
 - [ ] Test con TouchOSC o osc-send tool
+- [x] WebViewBridge C++ implementato (fallback per WebView interna)
 
 #### Week 5-6: GUI Base
 - [ ] 8 knob parametri con label
 - [ ] Valore display per ogni knob
 - [ ] Resizable window
 - [ ] Settings panel minimo (porta OSC, enable/disable)
+- [x] UI web esterna: architettura ponte implementata (React + WebSocket)
+- [ ] Heartbroken: setup React + server dev
+- [ ] Heartbroken: connessione React a ws://localhost:8080
 
 ### Deliverable
 - File .vst3 che si carica in Ableton Live
@@ -134,10 +145,14 @@ Parametro: da valore A a valore B in T secondi con curva E
 ### Tasks
 
 #### Week 7-8: AI Backend
-- [ ] Integrazione Ollama API (localhost:11434)
+- [x] Integrazione Ollama API (localhost:11434) ✅ **14/04/2026**
+- [x] AiEngine multi-provider: Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq ✅ **14/04/2026**
+- [x] Ollama cloud support (URL configurabile) ✅ **14/04/2026**
 - [ ] System prompt per contesto audio
 - [ ] Memoria conversazione (ultimi 10 messaggi)
 - [ ] Error handling (AI non disponibile, timeout)
+
+> **📍 CHECKPOINT 14/04/2026:** AiEngine v2 completo ma non ancora collegato a OscBridge. Manca integrazione finale in PluginProcessor.cpp per dispatch ai.prompt → risposta AI via WebSocket.
 
 #### Week 9-10: AI UI
 - [ ] Chat panel laterale (collassabile)
@@ -451,4 +466,5 @@ Fase 6:                                      ████
 
 ---
 
-*Questo piano è living document. Aggiornare dopo ogni milestone.*
+*Questo piano è living document. Aggiornare dopo ogni push o modifica significativa.*
+*Ultimo aggiornamento: 2026-04-12 — Fase 0 completata, Fase 1 in corso (skeleton + OSC parziale)*

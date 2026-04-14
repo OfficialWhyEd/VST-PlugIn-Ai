@@ -41,3 +41,6 @@ temp/
 .cache/
 .secrets
 .secrets
+
+# LLM Wiki (local only)
+OpenClaw-VST-Wiki/
