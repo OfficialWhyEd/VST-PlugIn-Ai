@@ -9,6 +9,7 @@
 #include "PluginEditor.h"
 #include "OscHandler.h"
 #include "AiEngine.h"
+#include "OscBridge.h"
 
 //==============================================================================
 OpenClawAudioProcessor::OpenClawAudioProcessor()
@@ -50,6 +51,9 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
     
     // Initialize AI Engine (placeholder)
     aiEngine = std::make_unique<AiEngine>();
+    
+    // Initialize OscBridge (WebSocket bridge for React UI - Phase 2)
+    oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
 }
 
 OpenClawAudioProcessor::~OpenClawAudioProcessor()
@@ -57,6 +61,8 @@ OpenClawAudioProcessor::~OpenClawAudioProcessor()
     // Stop OSC before destruction
     if (oscHandler)
         oscHandler->stop();
+    if (oscBridge)
+        oscBridge->stop();
 }
 
 //==============================================================================
@@ -70,6 +76,13 @@ void OpenClawAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
         oscHandler->start();
         DBG("[OpenClaw] OSC Handler started on port " + juce::String(oscPort));
     }
+    
+    // Start OscBridge for React UI communication
+    if (oscBridge && !oscBridge->isRunning())
+    {
+        oscBridge->start();
+        DBG("[OpenClaw] OscBridge WebSocket server started on port 8080");
+    }
 }
 
 void OpenClawAudioProcessor::releaseResources()
@@ -79,6 +92,13 @@ void OpenClawAudioProcessor::releaseResources()
     {
         oscHandler->stop();
         DBG("[OpenClaw] OSC Handler stopped");
+    }
+    
+    // Stop OscBridge
+    if (oscBridge)
+    {
+        oscBridge->stop();
+        DBG("[OpenClaw] OscBridge stopped");
     }
 }
 
@@ -230,6 +250,16 @@ void OpenClawAudioProcessor::handleOscMessage(const juce::String& address, float
     
     // In Phase 2, we'll forward these to the UI via AsyncUpdater
     // and implement bidirectional OSC (plugin -> DAW)
+}
+
+bool OpenClawAudioProcessor::isOscBridgeRunning() const
+{
+    return oscBridge ? oscBridge->isRunning() : false;
+}
+
+int OpenClawAudioProcessor::getOscBridgeWsPort() const
+{
+    return oscBridge ? oscBridge->getWebSocketPort() : 0;
 }
 
 //==============================================================================

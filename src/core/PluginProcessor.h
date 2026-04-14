@@ -13,6 +13,7 @@
 // Forward declarations
 class OscHandler;
 class AiEngine;
+class OscBridge;
 
 //==============================================================================
 class OpenClawAudioProcessor : public juce::AudioProcessor
@@ -73,6 +74,11 @@ public:
     bool isOscConnected() const;
     juce::StringArray getOscLog() const;
     void clearOscLog();
+
+    // OscBridge (WebSocket bridge for React UI)
+    OscBridge* getOscBridge() const { return oscBridge.get(); }
+    bool isOscBridgeRunning() const;
+    int getOscBridgeWsPort() const;
     
     // OSC Message received callback
     void handleOscMessage(const juce::String& address, float value);
@@ -90,9 +96,12 @@ private:
     std::unique_ptr<AiEngine> aiEngine;
     juce::String lastAiResponse;
     
-    // OSC Handler
+    // OSC Handler (for MIDI/parameter mapping - legacy)
     std::unique_ptr<OscHandler> oscHandler;
     int oscPort = 9000;
+    
+    // OscBridge (WebSocket bridge for React UI - Phase 2)
+    std::unique_ptr<OscBridge> oscBridge;
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenClawAudioProcessor)

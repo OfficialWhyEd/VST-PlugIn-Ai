@@ -67,6 +67,8 @@ target_sources(OpenClawVSTPlugin
         src/osc/OscHandler.cpp
         src/ai/AiEngine.cpp
         src/ui/WebViewBridge.cpp
+        src/bridge/WebSocketServer.cpp
+        src/bridge/OscBridge.cpp
 )
 
 # ==============================================================================
@@ -103,6 +105,7 @@ target_include_directories(OpenClawVSTPlugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
     ${CURL_INCLUDE_DIRS}
 )
 
