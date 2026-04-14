@@ -54,12 +54,25 @@ class OpenClawBridge {
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.lastConnectedAt = null;
+    this.stateListeners = [];
 
     // Bind metodi
     this._handleMessage = this._handleMessage.bind(this);
     this._handleOpen = this._handleOpen.bind(this);
     this._handleClose = this._handleClose.bind(this);
     this._handleError = this._handleError.bind(this);
+  }
+
+  onStateChange(callback) {
+    this.stateListeners.push(callback);
+    return () => {
+      this.stateListeners = this.stateListeners.filter(l => l !== callback);
+    };
+  }
+
+  _setState(newState) {
+    this.state = newState;
+    this.stateListeners.forEach(l => l(newState));
   }
 
   /**
@@ -75,7 +88,7 @@ class OpenClawBridge {
       }
 
       this.url = url;
-      this.state = ConnectionState.CONNECTING;
+      this._setState(ConnectionState.CONNECTING);
       console.log('[OpenClaw] Connessione a ' + url + '...');
 
       try {
@@ -100,7 +113,7 @@ class OpenClawBridge {
         };
 
       } catch (e) {
-        this.state = ConnectionState.ERROR;
+        this._setState(ConnectionState.ERROR);
         console.error('[OpenClaw] Errore connessione:', e);
         reject(e);
       }
@@ -120,7 +133,7 @@ class OpenClawBridge {
       this.ws = null;
     }
 
-    this.state = ConnectionState.DISCONNECTED;
+    this._setState(ConnectionState.DISCONNECTED);
     console.log('[OpenClaw] Disconnesso');
   }
 
@@ -389,7 +402,7 @@ class OpenClawBridge {
   // ========================
 
   _handleOpen(event) {
-    this.state = ConnectionState.CONNECTED;
+    this._setState(ConnectionState.CONNECTED);
     this.reconnectAttempts = 0;
     this.lastConnectedAt = Date.now();
     console.log('[OpenClaw] Connesso a', this.url);
@@ -417,7 +430,7 @@ class OpenClawBridge {
 
   _handleClose(event) {
     const wasConnected = this.state === ConnectionState.CONNECTED;
-    this.state = ConnectionState.DISCONNECTED;
+    this._setState(ConnectionState.DISCONNECTED);
     console.log('[OpenClaw] Connessione chiusa:', event.code, event.reason);
 
     // Cleanup
@@ -432,7 +445,7 @@ class OpenClawBridge {
 
   _handleError(event) {
     console.error('[OpenClaw] WebSocket error');
-    this.state = ConnectionState.ERROR;
+    this._setState(ConnectionState.ERROR);
   }
 
   _handleMessage(event) {
@@ -484,7 +497,7 @@ class OpenClawBridge {
 
   _scheduleReconnect() {
     this._clearReconnectTimer();
-    this.state = ConnectionState.RECONNECTING;
+    this._setState(ConnectionState.RECONNECTING);
     this.reconnectAttempts++;
     console.log('[OpenClaw] Retry connessione tra ' + RECONNECT_INTERVAL_MS + 'ms (attempt ' + this.reconnectAttempts + '/' + MAX_RECONNECT_ATTEMPTS + ')');
 

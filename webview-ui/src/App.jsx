@@ -1,49 +1,60 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import './App.css'
 import Toolbox from './components/Toolbox'
+import { openclaw, ConnectionState } from './openclaw-bridge.js'
 
 function App() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
   const [lastMessage, setLastMessage] = useState(null)
+  const [logs, setLogs] = useState([])
+
+  const addLog = useCallback((msg) => {
+    setLogs(prev => [{ time: new Date().toLocaleTimeString(), msg }, ...prev].slice(0, 20))
+  }, [])
 
   useEffect(() => {
-    // Connessione al plugin C++ via window.receiveFromPlugin
-    window.receiveFromPlugin = (jsonString) => {
-      try {
-        const message = JSON.parse(jsonString)
-        setLastMessage(message)
-        setConnectionStatus('connected')
-        console.log('📥 Ricevuto dal plugin:', message)
-      } catch (e) {
-        console.error('Errore parsing JSON:', e)
-      }
-    }
+    openclaw.onAny((message) => {
+      console.log('[OpenClaw UI] Ricevuto:', message)
+      setLastMessage(message)
+      addLog(`Ricevuto: ${message.type || 'unknown'}`)
+    })
 
-    // Simula connessione dopo 1 secondo
-    setTimeout(() => {
-      setConnectionStatus('connected')
-    }, 1000)
+    const stateUnsub = openclaw.onStateChange((state) => {
+      setConnectionStatus(state)
+      addLog(`Stato: ${state}`)
+    })
+
+    openclaw.connect().then(() => {
+      addLog('Connesso al plugin via WebSocket')
+    }).catch((e) => {
+      addLog(`Errore connessione: ${e.message}`)
+    })
 
     return () => {
-      window.receiveFromPlugin = null
+      openclaw.off('*')
+      stateUnsub()
+      openclaw.disconnect()
     }
-  }, [])
+  }, [addLog])
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🎵 OpenClaw VST Bridge AI</h1>
+        <h1>OpenClaw VST Bridge AI</h1>
         <div className={`status ${connectionStatus}`}>
-          {connectionStatus === 'connected' ? '🟢 Connesso' : '🔴 Disconnesso'}
+          {connectionStatus === ConnectionState.CONNECTED ? 'Connesso' : 
+           connectionStatus === ConnectionState.CONNECTING ? 'Connessione...' :
+           connectionStatus === ConnectionState.RECONNECTING ? 'Riconnessione...' :
+           'Disconnesso'}
         </div>
       </header>
 
       <main className="app-main">
-        <Toolbox lastMessage={lastMessage} />
+        <Toolbox lastMessage={lastMessage} addLog={addLog} />
       </main>
 
       <footer className="app-footer">
-        <p>Plugin VST AI - v0.1</p>
+        <p>Plugin VST AI - v0.1 | WebSocket :8080 | OSC :9000</p>
       </footer>
     </div>
   )

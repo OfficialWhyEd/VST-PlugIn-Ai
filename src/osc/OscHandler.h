@@ -40,7 +40,7 @@ public:
     /** Start/stop the OSC listener */
     void start();
     void stop();
-    bool isRunning() const { return running.load(); }
+    bool isRunning() const { return running.load() && connected.load(); }
     
     //==============================================================================
     /** Send OSC messages to DAW */

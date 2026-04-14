@@ -826,4 +826,7 @@ juce::String OscBridge::generateUUID()
 void OscBridge::log(const juce::String& msg)
 {
     DBG("[OscBridge] " + msg);
+    juce::File logFile("/tmp/openclaw-debug.log");
+    juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
+    logFile.appendText("[" + timestamp + "] " + msg + "\n");
 }

@@ -33,22 +33,22 @@ OscHandler::~OscHandler()
 //==============================================================================
 void OscHandler::start()
 {
-    if (running.load())
-        return; // Already running
+    if (running.load() && connected.load())
+        return;
     
-    running.store(true);
-    
-    // Create UDP socket
+    // Create UDP socket and bind BEFORE setting running
     socket = std::make_unique<juce::DatagramSocket>();
     
     if (!socket->bindToPort(port))
     {
         addToLog("[OSC] ERROR: Cannot bind to port " + juce::String(port));
         connected.store(false);
+        running.store(false);
         return;
     }
     
     connected.store(true);
+    running.store(true);
     addToLog("[OSC] Listening on port " + juce::String(port));
     
     // Start listener thread

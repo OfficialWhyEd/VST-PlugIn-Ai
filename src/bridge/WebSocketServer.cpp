@@ -11,6 +11,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
+#include <vector>
 
 // GUID for WebSocket handshake (RFC 6455)
 static const juce::String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -41,17 +42,17 @@ bool WebSocketServer::start()
     if (running.load())
         return true;
 
-    // Create server socket
+    // Create server socket using JUCE's server pattern: createListener + waitForNextConnection
     serverSocket = std::make_unique<juce::StreamingSocket>();
 
-    if (!serverSocket->bindToPort(port))
+    if (!serverSocket->createListener(port))
     {
-        DBG("[WebSocketServer] ERROR: Cannot bind to port " + juce::String(port));
+        DBG("[WebSocketServer] ERROR: Cannot create listener on port " + juce::String(port));
         return false;
     }
 
     running.store(true);
-    DBG("[WebSocketServer] Bound to port " + juce::String(port) + ", starting accept thread");
+    DBG("[WebSocketServer] Listening on port " + juce::String(port) + ", starting accept thread");
 
     // Start accept thread
     acceptThread = std::make_unique<std::thread>([this]() { acceptLoop(); });
@@ -99,15 +100,22 @@ void WebSocketServer::stop()
 //==============================================================================
 void WebSocketServer::acceptLoop()
 {
-    DBG("[WebSocketServer] Accept loop started");
+    {
+        juce::File logFile("/tmp/openclaw-debug.log");
+        juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
+        logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
+    }
+
 
     while (running.load())
     {
-        // Check for waiting connection every 100ms
-        if (serverSocket && serverSocket->isConnected())
+        if (serverSocket)
         {
-            // Try to accept a connection (with timeout via listen queue)
+            // waitForNextConnection() blocks until a client connects or server is stopped
             juce::StreamingSocket* newClient = serverSocket->waitForNextConnection();
+
+            if (!running.load())
+                break;
 
             if (newClient != nullptr)
             {
@@ -134,8 +142,6 @@ void WebSocketServer::acceptLoop()
             }
         }
 
-        // Sleep a bit before next check
-        juce::Thread::sleep(100);
     }
 
     DBG("[WebSocketServer] Accept loop ended");
@@ -283,14 +289,39 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
     // Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n
     // ...
 
+    // Read HTTP upgrade request with retries (may need to wait for data)
     char buffer[4096];
-    int bytesRead = client->socket->read(buffer, sizeof(buffer) - 1, false);
+    int totalRead = 0;
+    int timeoutMs = 3000;
+    auto startTime = juce::Time::getMillisecondCounter();
 
-    if (bytesRead <= 0)
+    while (totalRead < (int)sizeof(buffer) - 1)
+    {
+        int bytesRead = client->socket->read(buffer + totalRead, sizeof(buffer) - 1 - totalRead, true);
+
+        if (bytesRead > 0)
+        {
+            totalRead += bytesRead;
+            buffer[totalRead] = '\0';
+
+            // Check if we have the full HTTP request (ends with \r\n\r\n)
+            if (juce::String(buffer, totalRead).contains("\r\n\r\n"))
+                break;
+        }
+        else
+        {
+            // No data yet, check timeout
+            if (juce::Time::getMillisecondCounter() - startTime > timeoutMs)
+                break;
+            juce::Thread::sleep(10);
+        }
+    }
+
+    if (totalRead <= 0)
         return false;
 
-    buffer[bytesRead] = '\0';
-    juce::String request(buffer, bytesRead);
+    buffer[totalRead] = '\0';
+    juce::String request(buffer, totalRead);
 
     DBG("[WebSocketServer] Handshake request:\n" + request.substring(0, juce::jmin(500, bytesRead)));
 
@@ -305,7 +336,8 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
     {
         if (line.startsWithIgnoreCase("Sec-WebSocket-Key:"))
         {
-            key = line.substring(16).trim();
+            int colonPos = line.indexOfChar(':');
+            key = line.substring(colonPos + 1).trim();
             break;
         }
     }
@@ -339,88 +371,66 @@ juce::String WebSocketServer::computeWebSocketAcceptKey(const juce::String& clie
     // RFC 6455: acceptKey = Base64(SHA1(clientKey + GUID))
     juce::String combined = clientKey + WEBSOCKET_GUID;
 
-    // SHA1 implementation inline (no external deps)
     unsigned char sha1Result[20];
-    {
-        struct SHA1_CTX {
-            uint32_t state[5];
-            uint64_t count;
-            unsigned char buffer[64];
-        };
+    uint32_t state[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
 
-        SHA1_CTX ctx;
-        ctx.state[0] = 0x67452301;
-        ctx.state[1] = 0xEFCDAB89;
-        ctx.state[2] = 0x98BADCFE;
-        ctx.state[3] = 0x10325476;
-        ctx.state[4] = 0xC3D2E1F0;
-        ctx.count = 0;
+    auto rol = [](uint32_t x, int n) { return (x << n) | (x >> (32 - n)); };
 
-        auto rol = [](uint32_t x, int n) { return ((x) << (n)) | ((x) >> (32 - (n))); };
+    auto sha1Block = [&](const unsigned char* block) {
+        uint32_t w[80];
+        for (int i = 0; i < 16; i++)
+            w[i] = (uint32_t(block[i*4]) << 24) | (uint32_t(block[i*4+1]) << 16) |
+                   (uint32_t(block[i*4+2]) << 8) | uint32_t(block[i*4+3]);
+        for (int i = 16; i < 80; i++)
+            w[i] = rol(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
 
-        auto sha1Block = [&](const unsigned char* block) {
-            uint32_t w[80];
-            for (int i = 0; i < 16; i++)
-                w[i] = (uint32_t(block[i*4]) << 24) | (uint32_t(block[i*4+1]) << 16) |
-                       (uint32_t(block[i*4+2]) << 8) | uint32_t(block[i*4+3]);
-            for (int i = 16; i < 80; i++)
-                w[i] = rol(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+        uint32_t a = state[0], b = state[1], c = state[2], d = state[3], e = state[4];
 
-            uint32_t a = ctx.state[0], b = ctx.state[1], c = ctx.state[2];
-            uint32_t d = ctx.state[3], e = ctx.state[4];
+        for (int i = 0; i < 20; i++) {
+            uint32_t temp = rol(a,5) + ((b&c)|((~b)&d)) + e + 0x5A827999 + w[i];
+            e=d; d=c; c=rol(b,30); b=a; a=temp;
+        }
+        for (int i = 20; i < 40; i++) {
+            uint32_t temp = rol(a,5) + (b^c^d) + e + 0x6ED9EBA1 + w[i];
+            e=d; d=c; c=rol(b,30); b=a; a=temp;
+        }
+        for (int i = 40; i < 60; i++) {
+            uint32_t temp = rol(a,5) + ((b&c)|(b&d)|(c&d)) + e + 0x8F1BBCDC + w[i];
+            e=d; d=c; c=rol(b,30); b=a; a=temp;
+        }
+        for (int i = 60; i < 80; i++) {
+            uint32_t temp = rol(a,5) + (b^c^d) + e + 0xCA62C1D6 + w[i];
+            e=d; d=c; c=rol(b,30); b=a; a=temp;
+        }
 
-            for (int i = 0; i < 20; i++) {
-                uint32_t f = (b & c) | ((~b) & d);
-                uint32_t k = 0x5A827999;
-                uint32_t temp = rol(a, 5) + f + e + k + w[i];
-                e = d; d = c; c = rol(b, 30); b = a; a = temp;
-            }
-            for (int i = 20; i < 40; i++) {
-                uint32_t f = b ^ c ^ d;
-                uint32_t k = 0x6ED9EBA1;
-                uint32_t temp = rol(a, 5) + f + e + k + w[i];
-                e = d; d = c; c = rol(b, 30); b = a; a = temp;
-            }
-            for (int i = 40; i < 60; i++) {
-                uint32_t f = (b & c) | (b & d) | (c & d);
-                uint32_t k = 0x8F1BBCDC;
-                uint32_t temp = rol(a, 5) + f + e + k + w[i];
-                e = d; d = c; c = rol(b, 30); b = a; a = temp;
-            }
-            for (int i = 60; i < 80; i++) {
-                uint32_t f = b ^ c ^ d;
-                uint32_t k = 0xCA62C1D6;
-                uint32_t temp = rol(a, 5) + f + e + k + w[i];
-                e = d; d = c; c = rol(b, 30); b = a; a = temp;
-            }
+        state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d; state[4]+=e;
+    };
 
-            ctx.state[0] += a; ctx.state[1] += b; ctx.state[2] += c;
-            ctx.state[3] += d; ctx.state[4] += e;
-        };
+    const auto* data = (const unsigned char*)combined.toRawUTF8();
+    size_t len = combined.getNumBytesAsUTF8();
+    uint64_t bitLen = (uint64_t)len * 8;
 
-        const auto* data = (const unsigned char*)combined.toRawUTF8();
-        size_t len = combined.getNumBytesAsUTF8();
+    size_t paddedLen = ((len + 9) / 64 + 1) * 64;
+    std::vector<unsigned char> padded(paddedLen, 0);
+    memcpy(padded.data(), data, len);
+    padded[len] = 0x80;
 
-        // Pad to 64 bytes
-        unsigned char padded[128];
-        memcpy(padded, data, len);
-        padded[len] = 0x80;
-        memset(padded + len + 1, 0, (len >= 56 ? 120 : 56) - len - 1);
-        *(uint64_t*)(padded + (len >= 56 ? 112 : 56)) = (uint64_t)len * 8;
+    // Big-endian 64-bit length at the end
+    for (int i = 0; i < 8; i++)
+        padded[paddedLen - 1 - i] = (unsigned char)(bitLen >> (i * 8));
 
-        sha1Block(padded);
-        if (len >= 56) sha1Block(padded + 64);
+    for (size_t offset = 0; offset < paddedLen; offset += 64)
+        sha1Block(padded.data() + offset);
 
-        for (int i = 0; i < 20; i++)
-            sha1Result[i] = (unsigned char)(ctx.state[i / 4] >> ((3 - i % 4) * 8));
-    }
+    for (int i = 0; i < 20; i++)
+        sha1Result[i] = (unsigned char)(state[i / 4] >> ((3 - i % 4) * 8));
 
     // Base64 encode
     static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     char result[32];
     int j = 0;
     for (int i = 0; i < 20; i += 3) {
-        uint32_t triple = (sha1Result[i] << 16) | (i+1 < 20 ? sha1Result[i+1] << 8 : 0) | (i+2 < 20 ? sha1Result[i+2] : 0);
+        uint32_t triple = (sha1Result[i] << 16) | (i+1<20 ? sha1Result[i+1]<<8 : 0) | (i+2<20 ? sha1Result[i+2] : 0);
         result[j++] = b64[(triple >> 18) & 0x3F];
         result[j++] = b64[(triple >> 12) & 0x3F];
         result[j++] = i+1 < 20 ? b64[(triple >> 6) & 0x3F] : '=';
