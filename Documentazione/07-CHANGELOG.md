@@ -28,6 +28,10 @@
 - **Protocollo JSON v1.0** — specifica completa C++↔JavaScript
 - **Architettura Ponte OSC-Web** — UI fuori processo via WebSocket
 - **Test suite Python** — 11/11 test protocollo passati
+- **AiEngine v2** — implementazione HTTP POST completa per tutti i provider
+- **AiEngine multi-provider** — Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
+- **OscBridge config AI** — configurazione provider/model/API key via WebSocket
+- **Ollama cloud support** — URL configurabile (non solo localhost)
 
 ### Changed
 - Pivot from external bridge to VST3 plugin

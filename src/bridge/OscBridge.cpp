@@ -410,18 +410,159 @@ void OscBridge::dispatchWidgetChange(const nlohmann::json& payload)
 //==============================================================================
 void OscBridge::dispatchConfig(const nlohmann::json& payload)
 {
-    if (payload.contains("key"))
-    {
-        std::string key = payload["key"];
+    if (!payload.contains("key"))
+        return;
 
-        if (key == "osc.port")
+    std::string key = payload["key"];
+    juce::String configKey(key.data(), key.size());
+
+    // AI Provider configuration
+    if (configKey == "ai.provider" && payload.contains("value"))
+    {
+        std::string provider = payload["value"];
+        log("[CONFIG] AI provider set to: " + juce::String(provider.data()));
+        
+        // Update AI engine config
+        if (aiEngine)
         {
-            if (payload.contains("value"))
-            {
-                int newPort = payload["value"].get<int>();
-                log("[CONFIG] Would change OSC port to " + juce::String(newPort));
-                // Note: Port change requires restart
-            }
+            AiEngine::Config cfg;
+            cfg.baseUrl = "http://localhost:11434";
+            cfg.model = "llama3.2";
+            
+            if (provider == "ollama")
+                cfg.provider = AiEngine::Provider::Ollama;
+            else if (provider == "gemini")
+                cfg.provider = AiEngine::Provider::Gemini;
+            else if (provider == "anthropic")
+                cfg.provider = AiEngine::Provider::Anthropic;
+            else if (provider == "openai")
+                cfg.provider = AiEngine::Provider::OpenAI;
+            else if (provider == "openrouter")
+                cfg.provider = AiEngine::Provider::OpenRouter;
+            else if (provider == "groq")
+                cfg.provider = AiEngine::Provider::Groq;
+            
+            aiEngine->configure(cfg);
+        }
+        
+        // Send confirmation
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.provider";
+        response["payload"]["value"] = provider;
+        response["payload"]["status"] = "ok";
+        wsServer->broadcast(response);
+    }
+    else if (configKey == "ai.model" && payload.contains("value"))
+    {
+        std::string model = payload["value"];
+        log("[CONFIG] AI model set to: " + juce::String(model.data()));
+        
+        if (aiEngine)
+        {
+            AiEngine::Config cfg;
+            cfg.model = juce::String(model.data());
+            aiEngine->configure(cfg);
+        }
+        
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.model";
+        response["payload"]["value"] = model;
+        response["payload"]["status"] = "ok";
+        wsServer->broadcast(response);
+    }
+    else if (configKey == "ai.apiKey" && payload.contains("value") && payload.contains("provider"))
+    {
+        std::string provider = payload["provider"];
+        std::string apiKey = payload["value"];
+        log("[CONFIG] API key set for: " + juce::String(provider.data()));
+        
+        if (aiEngine)
+        {
+            AiEngine::Config cfg;
+            cfg.apiKey = juce::String(apiKey.data());
+            aiEngine->configure(cfg);
+        }
+        
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.apiKey";
+        response["payload"]["provider"] = provider;
+        response["payload"]["status"] = "ok";
+        response["payload"]["masked"] = true; // Don't echo the key back
+        wsServer->broadcast(response);
+    }
+    else if (configKey == "ai.ollamaUrl" && payload.contains("value"))
+    {
+        std::string url = payload["value"];
+        log("[CONFIG] Ollama URL set to: " + juce::String(url.data()));
+        
+        if (aiEngine)
+        {
+            AiEngine::Config cfg;
+            cfg.baseUrl = juce::String(url.data());
+            cfg.provider = AiEngine::Provider::Ollama;
+            aiEngine->configure(cfg);
+        }
+        
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.ollamaUrl";
+        response["payload"]["value"] = url;
+        response["payload"]["status"] = "ok";
+        wsServer->broadcast(response);
+    }
+    else if (configKey == "ai.testConnection")
+    {
+        // Test connection to current AI provider
+        bool connected = aiEngine ? aiEngine->testConnection() : false;
+        juce::String errorMsg = aiEngine ? aiEngine->getLastError() : "AI engine not initialized";
+        
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.testConnection";
+        response["payload"]["connected"] = connected;
+        response["payload"]["error"] = errorMsg.toStdString();
+        wsServer->broadcast(response);
+        
+        log("[CONFIG] AI test connection: " + juce::String(connected ? "SUCCESS" : "FAILED"));
+    }
+    else if (configKey == "ai.getModels")
+    {
+        // Return available models for current provider
+        juce::StringArray models = aiEngine ? aiEngine->getAvailableModels() : juce::StringArray{"Not configured"};
+        
+        nlohmann::json modelArray = nlohmann::json::array();
+        for (const auto& model : models)
+            modelArray.push_back(model.toStdString());
+        
+        nlohmann::json response;
+        response["type"] = "config.response";
+        response["id"] = nullptr;
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["key"] = "ai.getModels";
+        response["payload"]["models"] = modelArray;
+        response["payload"]["provider"] = aiEngine ? aiEngine->getProviderName().toStdString() : "none";
+        wsServer->broadcast(response);
+    }
+    else if (configKey == "osc.port")
+    {
+        if (payload.contains("value"))
+        {
+            int newPort = payload["value"].get<int>();
+            log("[CONFIG] Would change OSC port to " + juce::String(newPort));
+            // Note: Port change requires restart
         }
     }
 }

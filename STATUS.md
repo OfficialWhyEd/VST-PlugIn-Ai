@@ -1,6 +1,6 @@
 # OpenClaw VST Bridge AI - Stato Progetto
 
-**Ultimo aggiornamento:** 2026-04-14 10:56
+**Ultimo aggiornamento:** 2026-04-14 12:52
 
 ---
 
@@ -13,12 +13,47 @@
 | **openclaw-bridge.js** | ✅ | Client React completo |
 | **Build integrata** | ✅ | VST3 + Standalone |
 | **Documentazione** | ✅ | Architettura e protocollo aggiornati |
+| **AiEngine multi-provider** | ✅ | Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq |
+| **OscBridge config AI** | ✅ | Provider, modello, API key via WebSocket |
+| **AiEngine ↔ OscBridge** | ✅ | Collegamento completo, dispatch ai.prompt |
 
 ---
 
-## 🎉 OSC BIDIREZIONALE COMPLETATO
+## 🎉 INTEGRAZIONE AI COMPLETATA
 
-**Commit:** `8affe2c` — WebSocket server + OscBridge funzionanti
+**Commit:** `8affe2c` — WebSocket server + OscBridge funzionanti  
+**Nuovo:** AiEngine v2 con HTTP POST reale + multi-provider support
+
+**Provider supportati:**
+| Provider | Tipo | Stato |
+|----------|------|-------|
+| Ollama | Locale/Cloud | ✅ HTTP POST completo |
+| Gemini | Cloud API | ✅ API key support |
+| Anthropic Claude | Cloud API | ✅ API key support |
+| OpenAI | Cloud API | ✅ API key support |
+| OpenRouter | Cloud API | ✅ API key support |
+| Groq | Cloud API | ✅ API key support |
+
+**Configurazione via WebSocket:**
+```json
+// Cambia provider
+{"type": "config.set", "payload": {"key": "ai.provider", "value": "ollama"}}
+
+// Imposta modello
+{"type": "config.set", "payload": {"key": "ai.model", "value": "llama3.2"}}
+
+// Configura API key
+{"type": "config.set", "payload": {"key": "ai.apiKey", "provider": "openai", "value": "sk-..."}}
+
+// URL Ollama (locale o cloud)
+{"type": "config.set", "payload": {"key": "ai.ollamaUrl", "value": "http://localhost:11434"}}
+
+// Test connessione
+{"type": "config.set", "payload": {"key": "ai.testConnection"}}
+
+// Richiedi lista modelli
+{"type": "config.set", "payload": {"key": "ai.getModels"}}
+```
 
 **Architettura finale:**
 ```
