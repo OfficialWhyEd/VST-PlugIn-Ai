@@ -61,6 +61,7 @@ private:
     
     // Fallback UI (quando WebView non disponibile)
     juce::Label titleLabel;
+    juce::Label subtitleLabel;
     juce::Slider gainSlider1;
     juce::Slider gainSlider2;
     juce::Label gainLabel1;

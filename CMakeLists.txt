@@ -47,7 +47,7 @@ juce_add_plugin(OpenClawVSTPlugin
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
-    FORMATS VST3
+    FORMATS VST3 Standalone
     PRODUCT_NAME "OpenClawVSTBridgeAI"
 )
 

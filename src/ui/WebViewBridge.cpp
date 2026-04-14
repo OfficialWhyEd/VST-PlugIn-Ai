@@ -64,18 +64,11 @@ void WebViewBridge::sendToFrontend(const nlohmann::json& message)
     std::string jsonStd = message.dump();
     juce::String jsonStr(jsonStd.data(), jsonStd.size());
     
-    // Escape per sicurezza JavaScript
-    juce::String escapedJson = escapeForJavaScript(jsonStr);
+    // Usa Base64 per trasmettere il payload in modo assolutamente sterile rispetto all'interprete URL
+    juce::String base64Json = juce::Base64::toBase64(jsonStd.data(), jsonStd.size());
     
-    // Costruisci codice JavaScript che chiama window.__openclawBridge.receiveMessage
-    // Se la funzione non esiste, logga un warning in console
-    juce::String jsCode = "javascript:(function(){"
-        "if(typeof window.__openclawBridge!=='undefined'\u0026\u0026window.__openclawBridge.receiveMessage){"
-        "window.__openclawBridge.receiveMessage(\"" + escapedJson + "\");"
-        "}else{"
-        "console.warn('OpenClaw Bridge: __openclawBridge non inizializzato');"
-        "}"
-        "})();";
+    // JS Injection essiccato: nessuna funzione anonima, nessun operatore logico complesso, nessun warning
+    juce::String jsCode = "javascript:if(window.__openclawBridge){window.__openclawBridge.receiveMessage(decodeURIComponent(escape(window.atob('" + base64Json + "'))));}";
     
     webView->goToURL(jsCode);
     
