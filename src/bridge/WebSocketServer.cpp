@@ -150,12 +150,15 @@ void WebSocketServer::acceptLoop()
 //==============================================================================
 void WebSocketServer::clientLoop(ClientInfo* client)
 {
-    DBG("[WebSocketServer] Client " + juce::String(client->id) + " thread started");
+    juce::File logFile("/tmp/openclaw-debug.log");
+    auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
+
+    logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
 
     // First: perform WebSocket handshake
     if (!performHandshake(client))
     {
-        DBG("[WebSocketServer] Handshake failed for client " + juce::String(client->id));
+        logFile.appendText("[" + ts() + "] [WS] Handshake FAILED for client " + juce::String(client->id) + "\n");
         client->connected.store(false);
         client->socket->close();
         if (connectionCallback)
@@ -164,7 +167,7 @@ void WebSocketServer::clientLoop(ClientInfo* client)
     }
 
     client->handshakeComplete = true;
-    DBG("[WebSocketServer] Handshake completed for client " + juce::String(client->id));
+    logFile.appendText("[" + ts() + "] [WS] Handshake OK for client " + juce::String(client->id) + "\n");
 
     // Notify connection
     if (connectionCallback)
@@ -277,57 +280,68 @@ void WebSocketServer::clientLoop(ClientInfo* client)
 //==============================================================================
 bool WebSocketServer::performHandshake(ClientInfo* client)
 {
-    if (!client || !client->socket || !client->socket->isConnected())
+    if (!client || !client->socket)
+    {
+        juce::File logFile("/tmp/openclaw-debug.log");
+        logFile.appendText("[WS-HS] No client or socket\n");
         return false;
+    }
 
-    // Read HTTP upgrade request
-    // The request looks like:
-    // GET / HTTP/1.1\r\n
-    // Host: localhost:8080\r\n
-    // Connection: Upgrade\r\n
-    // Upgrade: websocket\r\n
-    // Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n
-    // ...
+    juce::File logFile("/tmp/openclaw-debug.log");
+    auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
-    // Read HTTP upgrade request with retries (may need to wait for data)
+    // Read HTTP upgrade request with polling
     char buffer[4096];
     int totalRead = 0;
-    int timeoutMs = 3000;
+
+    logFile.appendText("[" + ts() + "] [WS-HS] Waiting for handshake data...\n");
+
+    int maxWaitMs = 3000;
     auto startTime = juce::Time::getMillisecondCounter();
 
     while (totalRead < (int)sizeof(buffer) - 1)
     {
-        int bytesRead = client->socket->read(buffer + totalRead, sizeof(buffer) - 1 - totalRead, true);
+        int bytesRead = client->socket->read(buffer + totalRead, sizeof(buffer) - 1 - totalRead, false);
 
         if (bytesRead > 0)
         {
             totalRead += bytesRead;
             buffer[totalRead] = '\0';
 
-            // Check if we have the full HTTP request (ends with \r\n\r\n)
             if (juce::String(buffer, totalRead).contains("\r\n\r\n"))
                 break;
         }
+        else if (bytesRead == 0)
+        {
+            if (juce::Time::getMillisecondCounter() - startTime > maxWaitMs)
+                break;
+            juce::Thread::sleep(5);
+        }
         else
         {
-            // No data yet, check timeout
-            if (juce::Time::getMillisecondCounter() - startTime > timeoutMs)
-                break;
-            juce::Thread::sleep(10);
+            logFile.appendText("[" + ts() + "] [WS-HS] Read error: " + juce::String(bytesRead) + "\n");
+            break;
         }
     }
 
     if (totalRead <= 0)
+    {
+        logFile.appendText("[" + ts() + "] [WS-HS] No data received\n");
         return false;
+    }
 
     buffer[totalRead] = '\0';
+
+    logFile.appendText("[" + ts() + "] [WS-HS] Received " + juce::String(totalRead) + " bytes\n");
+    logFile.appendText("[" + ts() + "] [WS-HS] Request: " + juce::String(buffer, totalRead).substring(0, 300) + "\n");
+
     juce::String request(buffer, totalRead);
 
-    DBG("[WebSocketServer] Handshake request:\n" + request.substring(0, juce::jmin(500, bytesRead)));
-
-    // Check it's a valid HTTP GET request
     if (!request.startsWith("GET"))
+    {
+        logFile.appendText("[" + ts() + "] [WS-HS] Not a GET request\n");
         return false;
+    }
 
     // Extract Sec-WebSocket-Key
     juce::String key;
@@ -344,12 +358,16 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 
     if (key.isEmpty())
     {
-        DBG("[WebSocketServer] No Sec-WebSocket-Key found");
+        logFile.appendText("[" + ts() + "] [WS-HS] No Sec-WebSocket-Key found\n");
         return false;
     }
 
-    // Compute accept key: SHA1(key + GUID), base64 encoded
+    logFile.appendText("[" + ts() + "] [WS-HS] Client key: " + key + "\n");
+
+    // Compute accept key
     juce::String acceptKey = computeWebSocketAcceptKey(key);
+
+    logFile.appendText("[" + ts() + "] [WS-HS] Accept key: " + acceptKey + "\n");
 
     // Send HTTP 101 response
     juce::String response =
@@ -360,9 +378,16 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
         "\r\n";
 
     int sent = client->socket->write(response.toRawUTF8(), response.getNumBytesAsUTF8());
-    DBG("[WebSocketServer] Handshake response sent (" + juce::String(sent) + " bytes)");
+    logFile.appendText("[" + ts() + "] [WS-HS] Response sent: " + juce::String(sent) + " bytes\n");
 
-    return sent > 0;
+    if (sent <= 0)
+    {
+        logFile.appendText("[" + ts() + "] [WS-HS] Failed to send response\n");
+        return false;
+    }
+
+    logFile.appendText("[" + ts() + "] [WS-HS] Handshake SUCCESS\n");
+    return true;
 }
 
 //==============================================================================
