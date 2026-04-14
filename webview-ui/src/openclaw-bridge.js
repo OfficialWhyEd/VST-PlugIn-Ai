@@ -56,6 +56,8 @@ class OpenClawBridge {
     this.lastConnectedAt = null;
     this.stateListeners = [];
 
+    this.botState = 'idle';
+
     // Bind metodi
     this._handleMessage = this._handleMessage.bind(this);
     this._handleOpen = this._handleOpen.bind(this);
@@ -386,6 +388,18 @@ class OpenClawBridge {
   }
 
   /**
+   * Bot state management (for BotFace integration)
+   */
+  setBotState(state) {
+    this.botState = state;
+    window.dispatchEvent(new CustomEvent('openclaw-botstate', { detail: state }));
+  }
+
+  getBotState() {
+    return this.botState;
+  }
+
+  /**
    * Gets connection info
    */
   getConnectionInfo() {
@@ -407,7 +421,7 @@ class OpenClawBridge {
     this.lastConnectedAt = Date.now();
     console.log('[OpenClaw] Connesso a', this.url);
 
-    // Esponi globalmente per retrocompatibilità con vecchio codice
+    // Esponi globalmente per retrocompatibilita con prototipo di Edo e C++ WebView
     window.__openclawBridge = {
       receiveMessage: (jsonString) => {
         try {
@@ -419,6 +433,16 @@ class OpenClawBridge {
       },
       sendMessage: this.sendMessage.bind(this),
       isConnected: this.isConnected.bind(this)
+    };
+
+    // Per C++ JUCE: callback globale ricevuta messaggi
+    window.receiveFromPlugin = (jsonString) => {
+      try {
+        const msg = JSON.parse(jsonString);
+        this._handleMessage({ data: jsonString });
+      } catch (e) {
+        console.error('[OpenClaw] Errore parsing receiveFromPlugin:', e);
+      }
     };
 
     // Notifica plugin che siamo pronti
@@ -461,6 +485,19 @@ class OpenClawBridge {
 
     // Log per debug
     console.log('[OpenClaw] Ricevuto:', type, id ? `(id=${id})` : '', payload || '');
+
+    // Auto-update bot state based on message type
+    if (type === 'ai.prompt' || type === 'daw.request') {
+      this.setBotState('thinking');
+    } else if (type === 'ai.stream') {
+      this.setBotState('typing');
+    } else if (type === 'ai.response') {
+      this.setBotState('success');
+      setTimeout(() => this.setBotState('idle'), 2000);
+    } else if (type === 'plugin.error') {
+      this.setBotState('error');
+      setTimeout(() => this.setBotState('idle'), 3000);
+    }
 
     // Gestisci risposte pendenti
     if (id && this.pendingRequests.has(id)) {

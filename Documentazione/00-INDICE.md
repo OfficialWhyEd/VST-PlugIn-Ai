@@ -24,6 +24,7 @@
 
 ### 🤝 Collaborazione
 - **08-COLLABORAZIONE-HB.md** - Regole tecniche per Heartbroken (complementa WORKFLOW.md)
+- **09-GUIDA-SVILUPPO.md** - Guida sviluppo UI per Edo e team ★ NEW
 
 ### 🔧 Tecnico
 - **architettura-ponte.md** - Decisione architettura OSC-Web
