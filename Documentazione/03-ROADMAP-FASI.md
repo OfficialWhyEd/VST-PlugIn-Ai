@@ -105,21 +105,23 @@ Parametro: da valore A a valore B in T secondi con curva E
 - [ ] Test in Ableton (Edo)
 
 #### Week 3-4: OSC Communication
-- [x] OscHandler placeholder implementato (bidirezionale)
-- [ ] OSC server completo (porta 9000)
-- [ ] OSC client per inviare messaggi
+- [x] OscHandler implementato (bidirezionale UDP :9000→:9001)
+- [x] WebSocketServer RFC 6455 (TCP :8080, SHA1 inline)
+- [x] OscBridge bidirezionale OSC↔WebSocket
+- [x] openclaw-bridge.js client React con useOpenClaw hook
+- [x] Protocollo JSON v1.0 implementato in C++ e JS
 - [ ] Mappatura parametri plugin → OSC address
 - [ ] Test con TouchOSC o osc-send tool
-- [x] WebViewBridge C++ implementato (per architettura ponte)
+- [x] WebViewBridge C++ implementato (fallback per WebView interna)
 
 #### Week 5-6: GUI Base
 - [ ] 8 knob parametri con label
 - [ ] Valore display per ogni knob
 - [ ] Resizable window
 - [ ] Settings panel minimo (porta OSC, enable/disable)
-- [x] UI web esterna: architettura ponte decisa (React + OSC)
+- [x] UI web esterna: architettura ponte implementata (React + WebSocket)
 - [ ] Heartbroken: setup React + server dev
-- [ ] Heartbroken: client OSC in React
+- [ ] Heartbroken: connessione React a ws://localhost:8080
 
 ### Deliverable
 - File .vst3 che si carica in Ableton Live
