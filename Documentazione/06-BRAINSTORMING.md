@@ -6,6 +6,146 @@
 
 ---
 
+## 🔬 Sessione AI Integrata (DAW ↔ Plugin ↔ AI)
+
+**Concetto:** Il plugin crea e gestisce una "sessione AI" che vive dentro il progetto DAW, registrandone contesto, decisioni e cronologia. Ogni progetto ha le sue sessioni, separate e tracciabili.
+
+**Flusso:**
+
+1. **Apertura DAW** — Utente apre progetto, plugin viene caricato (manualmente o automaticamente)
+2. **Salvataggio progetto** — Creazione cartella `.openclaw/` nel progetto DAW. File sessione in formato Markdown con frontmatter YAML
+3. **Creazione autonoma sessione AI** — Il plugin rileva caratteristiche salienti del progetto (track, BPM, plugin caricati, time signature) e le registra nel file sessione
+4. **Chiusura progetto** — Sessione chiusa con timestamp, dump stato parametri, dati "impacchettati e isolati" (embedded nel progetto, non invasivi)
+5. **Riapertura progetto** — Plugin rileva `.openclaw/`, carica ultima sessione come "parent", nuova sessione "child" viene creata
+6. **Naming sessioni** — AI analizza il contesto e propone nome basato su cosa è stato fatto (es. `sessione-2026-04-14-mixing-eq.md`)
+
+**Formato file sessione:**
+
+```markdown
+---
+id: sess-20260414-143022
+parent: sess-20260413-220145
+project: MySong.alp
+daw: Reaper 7
+plugin_version: 0.1.0-beta
+created: 2026-04-14T14:30:22
+closed: 2026-04-14T16:45:00
+tracks: 8
+bpm: 120
+action: "EQ and compression on vocals"
+---
+
+## Timeline Azioni
+- 14:32 - Caricato FabFilter Pro-Q su track "Vox"
+- 14:35 - Boost 3dB @ 2.5kHz su Vox
+- 14:40 - AI suggerimento: "Riduci sibilante con de-esser"
+
+## Decisioni Prese
+- [x] Applicato EQ shelf @ 200Hz -3dB su drum bus
+- [x] Rimosso compressione default su master
+
+## Note AI
+"L'utente ha lavorato su vocal chain per 45 minuti.
+ Suggerimento: applica automazione gain su parti silenziose."
+```
+
+**Relazioni con idee esistenti:**
+- Estende **IB3 (Cloud Sync)** — le sessioni locali sono prerequisite per il cloud sync
+- Estende **T4 (Multi-Instance Sync)** — le sessioni servono da fuente di verità per sincronizzazione
+- Complementare a **AI2 (Emotion Detection)** — la sessione registra anche il "mood" del progetto
+
+**Priorità:** Alta (fondamentale per persistenza e UX)
+
+**Sfide:**
+- Formato file stabile e backward-compatible
+- Gestione conflitti se progetto aperto su due macchine
+- Performance: non scrivere troppo frequentemente su disco
+
+---
+
+## 🩺 Funzione "Doctor" — Sistema di Warning Proattivo
+
+**Concetto:** La AI funziona come "ingegnere audio esperto virtuale" (figura definita da Edo) che osserva in tempo reale ciò che succede nel plugin e nel DAW, intervenendo proattivamente con warning e suggerimenti.
+
+**Relazioni con idee esistenti:**
+- Estende **IB5 (Real-Time Audio Analysis)** — non solo analisi passiva ma intervento attivo
+- Estende **IB1 (Pattern Learning AI)** — il Doctor impara dalle abitudini e previene problemi ricorrenti
+- Parzialmente sovrapposto ad **AI1 (Agente Troubleshooting)** — il Doctor è un agente specializzato
+
+**4 Livelli di intervento:**
+
+| Livello | Nome | Comportamento |
+|---------|------|---------------|
+| 1 | SILENT | Solo log interno, nessuna notifica |
+| 2 | SUGGEST | Mostra suggerimento, chiede conferma |
+| 3 | AUTO | Agisce automaticamente, notifica l'utente |
+| 4 | HARD | Blocca azioni potenzialmente dannose |
+
+**Categorie di monitoraggio (definite da Edo in fase di programmazione):**
+
+1. **WATCHDOG** — Problemi tecnici critici
+   - Clip sul master (overload)
+   - Gain staging errato (track in clipping)
+   - Phase cancellation tra canali
+   - Frequenze in mascheramento (masking)
+   - Dynamics troppo compressi o troppo aperti
+   - Latenza plugin chain eccessiva
+
+2. **AI COUNSELOR** — Suggerimenti contestuali
+   - Basati su regole pre-impostate (dall'utente o da Edo)
+   - "Stai per inserire un EQ su una track già processata — ridondanza?"
+   - "Questo effetto è già presente su un return track"
+   - "Il gain di input è basso, potresti avere relationship problematica con il noise floor"
+
+3. **PROACTIVE ASSISTANT** — Accompagnamento attivo
+   - AI "consapevole" dello stato del plugin e del progetto
+   - Propone azioni prima che diventino problemi
+   - "Noto che alzi sempre il volume prima di incidere — vuoi che lo faccia io?"
+   - Integra con **IB1 (Pattern Learning)** per personalizzazione
+
+4. **CONFIGURABILITÀ** — Regole custom
+   - Utente definisce regole personalizzate
+   - Edo pre-imposta regole per situazioni comuni (template per generi/strumenti)
+   - Ogni regola ha: condizione, severità (1-5), azione suggerita, livello di intervento
+
+**Interfaccia proposta:**
+
+```
+┌─────────────────────────────────────┐
+│ DOCTOR WARNING                       │
+│ ──────────────────────────────────    │
+│ [CRITICO] Master clipping +2.1dB    │
+│ Suggerimento: riduci gain master     │
+│                                      │
+│ [Riduci a -0.3dB] [Ignora] [Info]   │
+│ [Disabilita regola]                  │
+└─────────────────────────────────────┘
+```
+
+**Struttura dati:**
+
+```cpp
+struct AudioWarning {
+    string type;        // "clip", "phase", "masking", "dynamics", "redundancy"
+    int severity;       // 1-5 (1=info, 5=critico)
+    string message;     // "Master clipping detected +2.1dB"
+    string suggestion;  // "Riduci gain di 3dB"
+    string track_name;  // Track di origine
+    string category;    // "watchdog", "counselor", "proactive"
+    bool auto_fix;      // Se auto-correzione disponibile
+};
+```
+
+**Priorità:** Alta (differenziazione forte, valore utente immediato)
+
+**Sfide:**
+- Bilanciare proattività vs invasività (non rompere il flusso creativo)
+- Accuratezza dei warning ( troppi falsi positivi = utente disabilita tutto)
+- Definire il set base di regole con Edo
+- Integrazione con analisi audio real-time (vedi IB5)
+
+---
+
 ## 🚀 Idee per v1.5 (6 mesi post-launch)
 
 ### IB1: Pattern Learning AI
@@ -369,11 +509,17 @@
 
 ## 📈 Idee per Roadmap Lunga
 
-### 2027 (v2.0)
+### 2026 (v0.x — fase attuale)
+- Sessione AI integrata (persistenza progetto)
+- Doctor Proattivo base (clip detection, gain staging)
+- OSC bidirezionale con DAW
+- WebSocket per UI React
+
+### 2027 (v1.5)
 - Real-time audio analysis
 - Pattern learning AI
-- Mobile app
-- Cloud sync
+- Mobile companion app
+- Cloud sync sessioni
 
 ### 2028 (v3.0)
 - Plugin hosting
@@ -427,7 +573,10 @@
 
 | Idea | User | Tech | Business | Comp | Score |
 |------|------|------|----------|------|-------|
+| Sessione AI Integrata | 5 | 3 | 4 | 5 | 4.25 |
+| Doctor Proattivo | 5 | 3 | 5 | 5 | 4.5 |
 | Pattern Learning | 5 | 3 | 5 | 5 | 4.5 |
+| Real-Time Audio Analysis | 4 | 3 | 4 | 4 | 3.75 |
 | Voice Control | 3 | 4 | 3 | 3 | 3.25 |
 | BCI | 2 | 1 | 1 | 5 | 2.25 |
 
