@@ -268,7 +268,7 @@ void OpenClawAudioProcessor::setOscPort(int port)
         // Recreate with new port
         oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
         oscBridge->setAiEngine(aiEngine.get());
-        oscBridge->setDawTarget("127.0.0.1", 8000);
+    oscBridge->setDawTarget("192.168.1.12", 8000);
         oscBridge->start();
     }
 }

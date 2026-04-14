@@ -227,28 +227,29 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
 
     log("[CMD] " + command);
 
+    // Reaper OSC addresses: /play, /stop, /record
     if (command == "play")
     {
-        sendOscToDaw("/transport/play", 1.0f);
+        sendOscToDaw("/play", 1.0f);
     }
     else if (command == "stop")
     {
-        sendOscToDaw("/transport/stop", 1.0f);
+        sendOscToDaw("/stop", 1.0f);
     }
     else if (command == "record")
     {
-        sendOscToDaw("/transport/record", 1.0f);
+        sendOscToDaw("/record", 1.0f);
     }
     else if (command == "pause")
     {
-        sendOscToDaw("/transport/pause", 1.0f);
+        sendOscToDaw("/pause", 1.0f);
     }
     else if (command == "setTempo")
     {
         if (payload.contains("bpm"))
         {
             float bpm = payload["bpm"].get<float>();
-            sendOscToDaw("/transport/tempo", bpm);
+            sendOscToDaw("/tempo", bpm);
             currentBpm = bpm;
         }
     }
