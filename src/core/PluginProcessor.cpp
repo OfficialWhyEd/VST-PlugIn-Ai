@@ -30,6 +30,16 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
         params.push_back(std::make_unique<juce::AudioParameterBool>(
             "aiEnabled", "AI Enabled", true));
         
+        // AI Provider (Ollama, OpenAI, Gemini, Anthropic, OpenRouter, Groq)
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            "aiProvider", "AI Provider",
+            juce::StringArray{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq"},
+            0)); // Default: Ollama
+        
+        // AI Model (es. "llama3.2", "gpt-4o-mini")
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            "aiModelIndex", "AI Model Index", 0.0f, 100.0f, 0.0f)); // Placeholder per model selection
+        
         // OSC Port
         params.push_back(std::make_unique<juce::AudioParameterInt>(
             "oscPort", "OSC Port", 1024, 65535, 9000));
@@ -40,6 +50,10 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
     // Get parameter pointers
     gainParam1 = parameters.getRawParameterValue("gain1");
     gainParam2 = parameters.getRawParameterValue("gain2");
+    aiEnabled = parameters.getRawParameterValue("aiEnabled");
+    aiProvider = parameters.getRawParameterValue("aiProvider");
+    aiModelIndex = parameters.getRawParameterValue("aiModelIndex");
+    oscPortParam = parameters.getRawParameterValue("oscPort");
     
     // Initialize OSC Handler
     oscHandler = std::make_unique<OscHandler>(oscPort);
@@ -49,11 +63,15 @@ OpenClawAudioProcessor::OpenClawAudioProcessor()
         handleOscMessage(address, value);
     });
     
-    // Initialize AI Engine (placeholder)
+    // Initialize AI Engine with current config
     aiEngine = std::make_unique<AiEngine>();
+    updateAiEngineConfig();
     
     // Initialize OscBridge (WebSocket bridge for React UI - Phase 2)
     oscBridge = std::make_unique<OscBridge>(oscPort, 8080);
+    
+    // Connect OscBridge to AiEngine for AI prompts
+    oscBridge->setAiEngine(aiEngine.get());
 }
 
 OpenClawAudioProcessor::~OpenClawAudioProcessor()
@@ -184,10 +202,100 @@ void OpenClawAudioProcessor::setStateInformation(const void* data, int sizeInByt
 //==============================================================================
 // OpenClaw specific methods
 
+void OpenClawAudioProcessor::updateAiEngineConfig()
+{
+    if (!aiEngine) return;
+    
+    AiEngine::Config config;
+    
+    // Get current provider from parameter
+    int providerIdx = aiProvider ? static_cast<int>(aiProvider->load()) : 0;
+    switch (providerIdx)
+    {
+        case 0: config.provider = AiEngine::Provider::Ollama; break;
+        case 1: config.provider = AiEngine::Provider::OpenAI; break;
+        case 2: config.provider = AiEngine::Provider::Gemini; break;
+        case 3: config.provider = AiEngine::Provider::Anthropic; break;
+        case 4: config.provider = AiEngine::Provider::OpenRouter; break;
+        case 5: config.provider = AiEngine::Provider::Groq; break;
+        default: config.provider = AiEngine::Provider::Ollama; break;
+    }
+    
+    // Ollama default settings
+    config.baseUrl = "http://localhost:11434";
+    config.model = "llama3.2";
+    config.timeoutMs = 30000;
+    
+    // Get API key from storage
+    {
+        juce::ScopedLock lock(apiKeyLock);
+        auto providerName = getAiProvider();
+        auto it = apiKeys.find(providerName);
+        if (it != apiKeys.end())
+            config.apiKey = it->second.toStdString();
+    }
+    
+    aiEngine->configure(config);
+}
+
+juce::String OpenClawAudioProcessor::getAiProvider() const
+{
+    if (!aiProvider) return "Ollama";
+    int idx = static_cast<int>(aiProvider->load());
+    juce::StringArray providers{"Ollama", "OpenAI", "Gemini", "Anthropic", "OpenRouter", "Groq"};
+    return providers[idx];
+}
+
+juce::String OpenClawAudioProcessor::getAiModel() const
+{
+    // Map model index to actual model name
+    if (!aiModelIndex) return "llama3.2";
+    int idx = static_cast<int>(aiModelIndex->load());
+    
+    // Default models per provider
+    juce::StringArray ollamaModels{"llama3.2", "llama3.1:8b", "mistral", "codellama"};
+    juce::StringArray openaiModels{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"};
+    juce::StringArray geminiModels{"gemini-1.5-flash", "gemini-1.5-pro"};
+    
+    // For now return based on provider
+    auto provider = getAiProvider();
+    if (provider == "Ollama")
+        return ollamaModels[idx % ollamaModels.size()];
+    if (provider == "OpenAI")
+        return openaiModels[idx % openaiModels.size()];
+    if (provider == "Gemini")
+        return geminiModels[idx % geminiModels.size()];
+    
+    return "llama3.2";
+}
+
+void OpenClawAudioProcessor::setAiApiKey(const juce::String& provider, const juce::String& apiKey)
+{
+    juce::ScopedLock lock(apiKeyLock);
+    apiKeys[provider] = apiKey;
+    // Reconfigure if this provider is currently active
+    updateAiEngineConfig();
+}
+
+juce::String OpenClawAudioProcessor::getAiApiKey(const juce::String& provider) const
+{
+    juce::ScopedLock lock(apiKeyLock);
+    auto it = apiKeys.find(provider);
+    return (it != apiKeys.end()) ? it->second : juce::String();
+}
+
 void OpenClawAudioProcessor::sendAiPrompt(const juce::String& prompt)
 {
-    if (aiEngine)
-        lastAiResponse = aiEngine->sendPrompt(prompt);
+    if (!aiEngine || !aiEnabled || aiEnabled->load() <= 0.5f)
+    {
+        lastAiResponse = "AI disabled or not initialized";
+        return;
+    }
+    
+    // Ensure config is up to date before sending
+    updateAiEngineConfig();
+    
+    lastAiResponse = aiEngine->sendPrompt(prompt);
 }
 
 void OpenClawAudioProcessor::setOscPort(int port)

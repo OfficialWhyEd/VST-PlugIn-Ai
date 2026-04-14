@@ -23,6 +23,9 @@
 #include <juce_core/juce_core.h>
 #include <nlohmann/json.hpp>
 
+// Forward declarations
+class AiEngine;
+
 class OscBridge
 {
 public:
@@ -82,6 +85,13 @@ public:
     int getOscPort() const { return oscPort; }
     int getWebSocketPort() const { return wsPort; }
 
+    //==============================================================================
+    /** Set AI Engine for processing prompts */
+    void setAiEngine(AiEngine* engine);
+    
+    /** Get current AI response status */
+    bool isAiProcessing() const { return aiProcessing.load(); }
+    
 private:
     //==============================================================================
     // Called when OSC message is received from DAW
@@ -120,10 +130,14 @@ private:
     void dispatchConfig(const nlohmann::json& payload);
     void dispatchOscSend(const nlohmann::json& payload);
 
+    // AI Engine reference (for ai.prompt messages)
+    AiEngine* aiEngine = nullptr;
+    std::atomic<bool> aiProcessing{false};
+
     // JSON message builders
     nlohmann::json makeDawTransport();
     nlohmann::json makeOscMessage(const juce::String& address, float value);
-
+    
     // Generate UUID for message IDs
     juce::String generateUUID();
 

@@ -9,6 +9,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
+#include <map>
 
 // Forward declarations
 class OscHandler;
@@ -65,6 +66,13 @@ public:
     void sendAiPrompt(const juce::String& prompt);
     juce::String getLastAiResponse() const { return lastAiResponse; }
     
+    // AI Configuration
+    void updateAiEngineConfig();
+    juce::String getAiProvider() const;
+    juce::String getAiModel() const;
+    void setAiApiKey(const juce::String& provider, const juce::String& apiKey);
+    juce::String getAiApiKey(const juce::String& provider) const;
+    
     // Parameters
     juce::AudioProcessorValueTreeState& getParameters() { return parameters; }
     
@@ -91,10 +99,18 @@ private:
     // Parameter pointers
     std::atomic<float>* gainParam1 = nullptr;
     std::atomic<float>* gainParam2 = nullptr;
+    std::atomic<float>* aiEnabled = nullptr;
+    std::atomic<float>* aiProvider = nullptr;
+    std::atomic<float>* aiModelIndex = nullptr;
+    std::atomic<float>* oscPortParam = nullptr;
     
     // AI Engine
     std::unique_ptr<AiEngine> aiEngine;
     juce::String lastAiResponse;
+    
+    // API Keys storage (not exposed as parameters for security)
+    mutable juce::CriticalSection apiKeyLock;
+    std::map<juce::String, juce::String> apiKeys; // provider -> key
     
     // OSC Handler (for MIDI/parameter mapping - legacy)
     std::unique_ptr<OscHandler> oscHandler;

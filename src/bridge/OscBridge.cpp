@@ -8,6 +8,7 @@
 */
 
 #include "OscBridge.h"
+#include "AiEngine.h"
 #include <chrono>
 #include <random>
 
@@ -346,15 +347,47 @@ void OscBridge::dispatchAiPrompt(const nlohmann::json& payload, const juce::Stri
 
     log("[AI] Prompt received (id=" + reqId + "): " + prompt.substring(0, 50));
 
-    // TODO: Integrate with AiEngine
-    // For now, just acknowledge
+    if (!aiEngine)
+    {
+        // No AI engine configured
+        nlohmann::json response;
+        response["type"] = "ai.response";
+        response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
+        response["timestamp"] = juce::Time::currentTimeMillis();
+        response["payload"]["status"] = "error";
+        response["payload"]["provider"] = "none";
+        response["payload"]["content"] = "AI engine not initialized";
+        wsServer->broadcast(response);
+        return;
+    }
+
+    // Send "thinking" status
+    {
+        nlohmann::json status;
+        status["type"] = "ai.response";
+        status["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
+        status["timestamp"] = juce::Time::currentTimeMillis();
+        status["payload"]["status"] = "thinking";
+        status["payload"]["provider"] = "processing";
+        status["payload"]["content"] = "";
+        wsServer->broadcast(status);
+    }
+
+    aiProcessing.store(true);
+
+    // Call AI engine (blocking for now - in future use async)
+    juce::String responseText = aiEngine->sendPrompt(prompt);
+
+    aiProcessing.store(false);
+
+    // Send final response
     nlohmann::json response;
     response["type"] = "ai.response";
     response["id"] = reqId.isNotEmpty() ? reqId.toStdString() : generateUUID().toStdString();
     response["timestamp"] = juce::Time::currentTimeMillis();
-    response["payload"]["status"] = "pending";
-    response["payload"]["provider"] = "placeholder";
-    response["payload"]["content"] = "AI integration pending - configure AiEngine";
+    response["payload"]["status"] = "success";
+    response["payload"]["provider"] = "ollama"; // TODO: get from aiEngine
+    response["payload"]["content"] = responseText.toStdString();
 
     wsServer->broadcast(response);
 }
@@ -593,6 +626,12 @@ void OscBridge::setDawTarget(const juce::String& host, int sendPort)
 {
     oscHandler->setSendTarget(host, sendPort);
     log("[CONFIG] DAW target set to " + host + ":" + juce::String(sendPort));
+}
+
+void OscBridge::setAiEngine(AiEngine* engine)
+{
+    aiEngine = engine;
+    log("[OscBridge] AI engine " + juce::String(engine ? "connected" : "disconnected"));
 }
 
 //==============================================================================
