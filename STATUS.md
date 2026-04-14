@@ -101,11 +101,54 @@
 
 | # | Task | Chi | Priorità |
 |---|------|-----|----------|
-| 1 | Integrazione AiEngine con OscBridge | Aura | Alta |
+| 1 | ~~Integrazione AiEngine con OscBridge~~ | ✅ Aura | **COMPLETATO** |
 | 2 | UI React completa con widget dinamici | Heartbroken | Alta |
-| 3 | Test end-to-end DAW ↔ Browser | Carlo | Media |
+| 3 | Test end-to-end DAW ↔ Browser | Carlo | Alta ← **PROSSIMO STEP** |
 | 4 | Implementare streaming AI | Aura | Media |
 | 5 | Documentare setup sviluppo HB | Aura | Bassa |
+
+## 🔄 Sessione 14/04 - Riepilogo Chiusura
+
+**Stato attuale:** Sessione sovraccarica, richiesto aggiornamento documentazione + checkpoint.
+
+### ✅ Completato in Questa Sessione
+| Componente | Stato | Commit |
+|------------|-------|--------|
+| AiEngine multi-provider | ✅ | Non committato (file modificati localmente) |
+| OscBridge config AI via WebSocket | ✅ | Modifiche locali |
+| AiEngine ↔ OscBridge dispatch | ✅ | Callback integrati |
+
+### 📝 File Modificati (Non Committati)
+- `src/ai/AiEngine.cpp` — Implementazione completa HTTP POST per tutti i provider
+- `src/ai/AiEngine.h` — Header con struct Config e enum Provider
+- `src/bridge/OscBridge.cpp/.h` — Callback ai.prompt aggiunto
+- `src/core/PluginProcessor.cpp/.h` — Integrazione da completare
+
+### ⏸️ Prossima Sessione — Checkpoint Ripresa
+
+**Task:** Collegamento finale `AiEngine` ↔ `OscBridge` in `PluginProcessor.cpp`
+
+**Codice da aggiungere (già progettato):**
+```cpp
+// In PluginProcessor::prepareToPlay() o costruttore:
+aiEngine = std::make_unique<AiEngine>();
+aiEngine->configure(aiConfig);
+
+// In OscBridge::onAiPrompt():
+// auto response = aiEngine->sendPrompt(prompt);
+// sendOscMessage("/ai/response", {response});
+```
+
+**3 Opzioni Prioritarie per Prossima Sessione:**
+1. **Integrazione AI finale** — Completare callback, test chiamata Ollama reale
+2. **Test end-to-end** — Avviare standalone + browser, verificare flusso OSC
+3. **8 knob + parametri** — Mappatura VST ↔ OSC ↔ React UI
+
+**Decisione da prendere all'inizio della prossima sessione.**
+
+---
+**Checkpoint creato:** 14/04/2026 14:11 CET
+**Git status:** Nessun commit pendente (file modificati solo localmente — verificare se committare o scartare)
 
 ---
 

@@ -32,8 +32,25 @@
 - **AiEngine multi-provider** — Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
 - **OscBridge config AI** — configurazione provider/model/API key via WebSocket
 - **Ollama cloud support** — URL configurabile (non solo localhost)
+- **Session checkpoint** — documento ripresa per sessione successiva (14/04/2026)
 
 ### Changed
+- AiEngine: ora usa `juce::URL` con `withPOSTData()` per request body reali
+- AiEngine: JSON escape manuale per prompt (no external deps)
+- AiEngine multi-provider: tutti i provider cloud richiedono API key (check esplicito)
+
+### In Progress (Non committato)
+- AiEngine ↔ OscBridge integration in PluginProcessor.cpp (80% — manca collegamento callback finale)
+- Test end-to-end DAW ↔ Browser (bloccato da decisione prossima sessione)
+
+### Notes
+- File modificati localmente ma non committati: AiEngine.cpp, AiEngine.h, OscBridge.cpp/.h
+- Checkpoint sessione: `STATUS.md` sezione "Sessione 14/04 - Riepilogo Chiusura"
+- Prossima azione: completare integrazione AI o test end-to-end (da decidere)
+
+---
+
+## [1.0.0] - 2026-07-01 (Planned)
 - Pivot from external bridge to VST3 plugin
 - Primary DAW target: Reaper (tested) + Ableton (planned)
 - UI framework: React + WebSocket (was WebView integrata, crashava su Linux)

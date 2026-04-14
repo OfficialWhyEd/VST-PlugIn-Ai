@@ -145,10 +145,14 @@ Parametro: da valore A a valore B in T secondi con curva E
 ### Tasks
 
 #### Week 7-8: AI Backend
-- [ ] Integrazione Ollama API (localhost:11434)
+- [x] Integrazione Ollama API (localhost:11434) ✅ **14/04/2026**
+- [x] AiEngine multi-provider: Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq ✅ **14/04/2026**
+- [x] Ollama cloud support (URL configurabile) ✅ **14/04/2026**
 - [ ] System prompt per contesto audio
 - [ ] Memoria conversazione (ultimi 10 messaggi)
 - [ ] Error handling (AI non disponibile, timeout)
+
+> **📍 CHECKPOINT 14/04/2026:** AiEngine v2 completo ma non ancora collegato a OscBridge. Manca integrazione finale in PluginProcessor.cpp per dispatch ai.prompt → risposta AI via WebSocket.
 
 #### Week 9-10: AI UI
 - [ ] Chat panel laterale (collassabile)
