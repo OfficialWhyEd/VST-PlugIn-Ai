@@ -362,4 +362,42 @@ git push origin master
 
 ---
 
+## ⚠️ TODO - Lavori Futuri
+
+### Modifica Plugin C++ per Supporto Ableton Nativo
+
+**Problema:** I comandi OSC attuali funzionano con Reaper ma **NON con Ableton** (richiede Max for Live).
+
+**Soluzione richiesta:** Modificare il codice C++ del plugin per inviare comandi specifici Ableton Live Object Model (LOM).
+
+**File da modificare:**
+- `src/bridge/OscBridge.cpp` - Aggiungere mapping comandi Ableton
+- `src/core/PluginProcessor.cpp` - Gestione comandi specifici per DAW
+
+**Comandi Ableton da implementare:**
+
+| Azione | Comando Reaper (attuale) | Comando Ableton (da aggiungere) |
+|--------|--------------------------|----------------------------------|
+| Play | `/action/40044` | `/live/play` o tramite LOM |
+| Stop | `/action/40047` | `/live/stop` |
+| Record | `/action/40048` | `/live/record` |
+| Track Volume | `/track/1/volume` | `/live/track/volume 0 0.75` |
+| Track Pan | `/track/1/pan` | `/live/track/pan 0 0.0` |
+| Track Mute | `/track/1/mute` | `/live/track/mute 0 1` |
+| Track Solo | `/track/1/solo` | `/live/track/solo 0 1` |
+| Tempo | `/tempo` | `/live/tempo 120` |
+| Undo | `/action/40322` | `/live/undo` |
+| Redo | - | `/live/redo` |
+
+**Note implementazione:**
+- Aggiungere rilevamento automatico DAW (Reaper vs Ableton)
+- Oppure parametro di configurazione esplicito
+- Documentare nel protocollo JSON v1.1
+
+**Priorità:** Alta - Necessario per funzionamento completo con Ableton senza Max for Live.
+
+**Assegnato a:** Edo (C++) / Heartbroken (coordinamento)
+
+---
+
 **Buon lavoro! 🎛️🎚️🎵**
