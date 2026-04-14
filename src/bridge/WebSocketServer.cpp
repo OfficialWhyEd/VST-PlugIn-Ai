@@ -10,6 +10,7 @@
 #include "WebSocketServer.h"
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 
 // GUID for WebSocket handshake (RFC 6455)
 static const juce::String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -49,10 +50,8 @@ bool WebSocketServer::start()
         return false;
     }
 
-    serverSocket->setSocketReadyReadHandler(nullptr); // We use accept thread
-
     running.store(true);
-    DBG("[WebSocketServer] Started on port " + juce::String(port));
+    DBG("[WebSocketServer] Bound to port " + juce::String(port) + ", starting accept thread");
 
     // Start accept thread
     acceptThread = std::make_unique<std::thread>([this]() { acceptLoop(); });
@@ -104,31 +103,39 @@ void WebSocketServer::acceptLoop()
 
     while (running.load())
     {
-        // Wait for connection (with timeout to check running flag)
-        auto startTime = std::chrono::steady_clock::now();
-        const int selectTimeoutMs = 1000;
-
-        while (running.load())
+        // Check for waiting connection every 100ms
+        if (serverSocket && serverSocket->isConnected())
         {
-            // Check if there's a connection waiting (non-blocking)
-            if (serverSocket && serverSocket->isConnected())
-            {
-                // Try to accept (this is non-blocking if we set it up right)
-                // Actually StreamingSocket::accept is blocking, so we need a different approach
-                // Use select/poll equivalent - JUCE doesn't have direct select, so we use a short sleep
-                juce::Thread::sleep(10);
+            // Try to accept a connection (with timeout via listen queue)
+            juce::StreamingSocket* newClient = serverSocket->waitForNextConnection();
 
-                // For simplicity, we'll do a blocking accept with timeout via close/reopen trick
-                // Or better: just do blocking accept but check running flag periodically
-            }
-            else
+            if (newClient != nullptr)
             {
-                juce::Thread::sleep(10);
+                DBG("[WebSocketServer] New connection accepted");
+
+                // Create client info
+                auto clientInfo = std::make_unique<ClientInfo>();
+                clientInfo->id = nextClientId.fetch_add(1);
+                clientInfo->socket.reset(newClient);
+                clientInfo->connected.store(true);
+                clientInfo->handshakeComplete = false;
+
+                // Add to clients list (store raw pointer for thread)
+                ClientInfo* clientPtr = clientInfo.get();
+                {
+                    std::lock_guard<std::mutex> lock(clientsMutex);
+                    clients.push_back(std::move(clientInfo));
+                }
+
+                // Start client thread with raw pointer (ownership in vector)
+                clientPtr->thread = std::make_unique<std::thread>([this, clientPtr]() {
+                    clientLoop(clientPtr);
+                });
             }
         }
 
-        // The accept approach with JUCE StreamingSocket needs a different strategy
-        // Let's use a workaround: close and recreate socket to break blocking accept
+        // Sleep a bit before next check
+        juce::Thread::sleep(100);
     }
 
     DBG("[WebSocketServer] Accept loop ended");
@@ -139,6 +146,25 @@ void WebSocketServer::clientLoop(ClientInfo* client)
 {
     DBG("[WebSocketServer] Client " + juce::String(client->id) + " thread started");
 
+    // First: perform WebSocket handshake
+    if (!performHandshake(client))
+    {
+        DBG("[WebSocketServer] Handshake failed for client " + juce::String(client->id));
+        client->connected.store(false);
+        client->socket->close();
+        if (connectionCallback)
+            connectionCallback(client->id, false);
+        return;
+    }
+
+    client->handshakeComplete = true;
+    DBG("[WebSocketServer] Handshake completed for client " + juce::String(client->id));
+
+    // Notify connection
+    if (connectionCallback)
+        connectionCallback(client->id, true);
+
+    // Now read messages
     while (client->connected.load() && running.load())
     {
         // Read data from client
@@ -172,13 +198,6 @@ void WebSocketServer::clientLoop(ClientInfo* client)
                 {
                     case 0x1: // Text frame
                     {
-                        if (!frame.masked)
-                        {
-                            DBG("[WebSocketServer] ERROR: Unmasked text frame from client " + juce::String(client->id));
-                            closeConnection(client, 1002, "Protocol error");
-                            break;
-                        }
-
                         std::string text(frame.payload.begin(), frame.payload.end());
                         DBG("[WebSocketServer] Text from client " + juce::String(client->id) + ": " + text.substr(0, 100));
 
@@ -247,6 +266,169 @@ void WebSocketServer::clientLoop(ClientInfo* client)
     // Notify disconnection
     if (connectionCallback)
         connectionCallback(client->id, false);
+}
+
+//==============================================================================
+bool WebSocketServer::performHandshake(ClientInfo* client)
+{
+    if (!client || !client->socket || !client->socket->isConnected())
+        return false;
+
+    // Read HTTP upgrade request
+    // The request looks like:
+    // GET / HTTP/1.1\r\n
+    // Host: localhost:8080\r\n
+    // Connection: Upgrade\r\n
+    // Upgrade: websocket\r\n
+    // Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n
+    // ...
+
+    char buffer[4096];
+    int bytesRead = client->socket->read(buffer, sizeof(buffer) - 1, false);
+
+    if (bytesRead <= 0)
+        return false;
+
+    buffer[bytesRead] = '\0';
+    juce::String request(buffer, bytesRead);
+
+    DBG("[WebSocketServer] Handshake request:\n" + request.substring(0, juce::jmin(500, bytesRead)));
+
+    // Check it's a valid HTTP GET request
+    if (!request.startsWith("GET"))
+        return false;
+
+    // Extract Sec-WebSocket-Key
+    juce::String key;
+    juce::StringArray lines = juce::StringArray::fromLines(request);
+    for (const auto& line : lines)
+    {
+        if (line.startsWithIgnoreCase("Sec-WebSocket-Key:"))
+        {
+            key = line.substring(16).trim();
+            break;
+        }
+    }
+
+    if (key.isEmpty())
+    {
+        DBG("[WebSocketServer] No Sec-WebSocket-Key found");
+        return false;
+    }
+
+    // Compute accept key: SHA1(key + GUID), base64 encoded
+    juce::String acceptKey = computeWebSocketAcceptKey(key);
+
+    // Send HTTP 101 response
+    juce::String response =
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Accept: " + acceptKey + "\r\n"
+        "\r\n";
+
+    int sent = client->socket->write(response.toRawUTF8(), response.getNumBytesAsUTF8());
+    DBG("[WebSocketServer] Handshake response sent (" + juce::String(sent) + " bytes)");
+
+    return sent > 0;
+}
+
+//==============================================================================
+juce::String WebSocketServer::computeWebSocketAcceptKey(const juce::String& clientKey)
+{
+    // RFC 6455: acceptKey = Base64(SHA1(clientKey + GUID))
+    juce::String combined = clientKey + WEBSOCKET_GUID;
+
+    // SHA1 implementation inline (no external deps)
+    unsigned char sha1Result[20];
+    {
+        struct SHA1_CTX {
+            uint32_t state[5];
+            uint64_t count;
+            unsigned char buffer[64];
+        };
+
+        SHA1_CTX ctx;
+        ctx.state[0] = 0x67452301;
+        ctx.state[1] = 0xEFCDAB89;
+        ctx.state[2] = 0x98BADCFE;
+        ctx.state[3] = 0x10325476;
+        ctx.state[4] = 0xC3D2E1F0;
+        ctx.count = 0;
+
+        auto rol = [](uint32_t x, int n) { return ((x) << (n)) | ((x) >> (32 - (n))); };
+
+        auto sha1Block = [&](const unsigned char* block) {
+            uint32_t w[80];
+            for (int i = 0; i < 16; i++)
+                w[i] = (uint32_t(block[i*4]) << 24) | (uint32_t(block[i*4+1]) << 16) |
+                       (uint32_t(block[i*4+2]) << 8) | uint32_t(block[i*4+3]);
+            for (int i = 16; i < 80; i++)
+                w[i] = rol(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+
+            uint32_t a = ctx.state[0], b = ctx.state[1], c = ctx.state[2];
+            uint32_t d = ctx.state[3], e = ctx.state[4];
+
+            for (int i = 0; i < 20; i++) {
+                uint32_t f = (b & c) | ((~b) & d);
+                uint32_t k = 0x5A827999;
+                uint32_t temp = rol(a, 5) + f + e + k + w[i];
+                e = d; d = c; c = rol(b, 30); b = a; a = temp;
+            }
+            for (int i = 20; i < 40; i++) {
+                uint32_t f = b ^ c ^ d;
+                uint32_t k = 0x6ED9EBA1;
+                uint32_t temp = rol(a, 5) + f + e + k + w[i];
+                e = d; d = c; c = rol(b, 30); b = a; a = temp;
+            }
+            for (int i = 40; i < 60; i++) {
+                uint32_t f = (b & c) | (b & d) | (c & d);
+                uint32_t k = 0x8F1BBCDC;
+                uint32_t temp = rol(a, 5) + f + e + k + w[i];
+                e = d; d = c; c = rol(b, 30); b = a; a = temp;
+            }
+            for (int i = 60; i < 80; i++) {
+                uint32_t f = b ^ c ^ d;
+                uint32_t k = 0xCA62C1D6;
+                uint32_t temp = rol(a, 5) + f + e + k + w[i];
+                e = d; d = c; c = rol(b, 30); b = a; a = temp;
+            }
+
+            ctx.state[0] += a; ctx.state[1] += b; ctx.state[2] += c;
+            ctx.state[3] += d; ctx.state[4] += e;
+        };
+
+        const auto* data = (const unsigned char*)combined.toRawUTF8();
+        size_t len = combined.getNumBytesAsUTF8();
+
+        // Pad to 64 bytes
+        unsigned char padded[128];
+        memcpy(padded, data, len);
+        padded[len] = 0x80;
+        memset(padded + len + 1, 0, (len >= 56 ? 120 : 56) - len - 1);
+        *(uint64_t*)(padded + (len >= 56 ? 112 : 56)) = (uint64_t)len * 8;
+
+        sha1Block(padded);
+        if (len >= 56) sha1Block(padded + 64);
+
+        for (int i = 0; i < 20; i++)
+            sha1Result[i] = (unsigned char)(ctx.state[i / 4] >> ((3 - i % 4) * 8));
+    }
+
+    // Base64 encode
+    static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char result[32];
+    int j = 0;
+    for (int i = 0; i < 20; i += 3) {
+        uint32_t triple = (sha1Result[i] << 16) | (i+1 < 20 ? sha1Result[i+1] << 8 : 0) | (i+2 < 20 ? sha1Result[i+2] : 0);
+        result[j++] = b64[(triple >> 18) & 0x3F];
+        result[j++] = b64[(triple >> 12) & 0x3F];
+        result[j++] = i+1 < 20 ? b64[(triple >> 6) & 0x3F] : '=';
+        result[j++] = i+2 < 20 ? b64[triple & 0x3F] : '=';
+    }
+    result[j] = '\0';
+
+    return juce::String(result);
 }
 
 //==============================================================================
@@ -437,7 +619,7 @@ void WebSocketServer::setConnectionCallback(ConnectionCallback callback)
 }
 
 //==============================================================================
-int WebSocketServer::getConnectedClientsCount() const
+int WebSocketServer::getConnectedClientsCount()
 {
     std::lock_guard<std::mutex> lock(clientsMutex);
     int count = 0;
@@ -463,23 +645,6 @@ void WebSocketServer::cleanupClients()
             [](const std::unique_ptr<ClientInfo>& c) { return !c->connected.load(); }),
         clients.end()
     );
-}
-
-//==============================================================================
-juce::String WebSocketServer::computeWebSocketAcceptKey(const juce::String& clientKey)
-{
-    // RFC 6455: acceptKey = Base64(SHA1(clientKey + GUID))
-    juce::String combined = clientKey + WEBSOCKET_GUID;
-
-    // Compute SHA1
-    juce::SHA256 sha; // Using SHA256 as JUCE doesn't have SHA1 directly
-    // Note: RFC 6455 requires SHA1, but for simplicity we'll use a stub
-    // In production, link to OpenSSL or use a proper SHA1 implementation
-    // For now, this is a placeholder that won't work with real browsers
-    // TODO: Add proper SHA1 implementation
-
-    DBG("[WebSocketServer] WARNING: Using placeholder SHA1 for WebSocket handshake");
-    return "placeholder_accept_key";
 }
 
 juce::String WebSocketServer::getCurrentTimestamp() const

@@ -23,7 +23,7 @@
 #include <juce_core/juce_core.h>
 #include <nlohmann/json.hpp>
 
-class OscBridge : private OscHandler::OscCallback  // Receive OSC from DAW
+class OscBridge
 {
 public:
     //==============================================================================
@@ -84,8 +84,8 @@ public:
 
 private:
     //==============================================================================
-    // OscHandler::OscCallback interface
-    void operator()(const juce::String& address, float value) override;
+    // Called when OSC message is received from DAW
+    void onOscReceived(const juce::String& address, float value);
 
     // WebSocket message handler (receives from UI)
     void handleWebSocketMessage(const nlohmann::json& message);

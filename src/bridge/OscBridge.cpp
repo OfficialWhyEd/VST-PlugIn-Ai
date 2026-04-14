@@ -20,7 +20,7 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
 
     // OSC → WebSocket: set callback for incoming OSC from DAW
     oscHandler->setCallback([this](const juce::String& address, float value) {
-        (*this)(address, value);
+        onOscReceived(address, value);
     });
 
     // WebSocket → OSC: set callback for incoming messages from UI
@@ -43,7 +43,9 @@ OscBridge::~OscBridge()
 bool OscBridge::start()
 {
     // Start OSC listener (receives from DAW)
-    if (!oscHandler->start())
+    oscHandler->start();
+    // Note: OscHandler::start() is void, it logs errors internally
+    if (!oscHandler->isRunning())
     {
         lastError = "Failed to start OSC listener on port " + juce::String(oscPort);
         log("[ERROR] " + lastError);
@@ -85,7 +87,7 @@ bool OscBridge::isRunning() const
 //==============================================================================
 // OscHandler::OscCallback - receives OSC from DAW
 //==============================================================================
-void OscBridge::operator()(const juce::String& address, float value)
+void OscBridge::onOscReceived(const juce::String& address, float value)
 {
     log("[OSC→WS] " + address + " = " + juce::String(value, 3));
 
@@ -119,12 +121,12 @@ void OscBridge::operator()(const juce::String& address, float value)
     {
         // Track volume change - need track ID parsing
         // Example: /track/1/volume → trackId=1, value=value
-        broadcastOscToUI(address, value);
+        forwardOscToUI(address, value);
     }
     else
     {
         // Forward all other OSC messages to UI for display
-        broadcastOscToUI(address, value);
+        forwardOscToUI(address, value);
     }
 }
 
@@ -319,7 +321,7 @@ void OscBridge::dispatchDawRequest(const nlohmann::json& payload, const juce::St
     {
         int trackId = payload.contains("trackId") ? payload["trackId"].get<int>() : 1;
         response["payload"]["trackId"] = trackId;
-        response["payload"]["name"] = "Track " + juce::String(trackId);
+        response["payload"]["name"] = std::string("Track ") + std::to_string(trackId);
         response["payload"]["volumeDb"] = 0.0;
         response["payload"]["pan"] = 0.0;
         response["payload"]["isMuted"] = false;

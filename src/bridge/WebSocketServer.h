@@ -61,7 +61,7 @@ public:
     //==============================================================================
     /** Get server info */
     int getPort() const { return port; }
-    int getConnectedClientsCount() const;
+    int getConnectedClientsCount();
     juce::String getServerURL() const;
 
     //==============================================================================

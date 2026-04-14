@@ -37,6 +37,12 @@ find_package(CURL REQUIRED)
 message(STATUS "CURL found: ${CURL_LIBRARIES}")
 
 # ==============================================================================
+# OpenSSL - Required for WebSocket SHA1 handshake (RFC 6455)
+# ==============================================================================
+# SHA1 implemented inline (no external OpenSSL dependency needed)
+# This keeps the build portable across Linux, Windows, macOS
+
+# ==============================================================================
 # JUCE Plugin
 # ==============================================================================
 
