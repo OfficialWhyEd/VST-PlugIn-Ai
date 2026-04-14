@@ -1,66 +1,64 @@
 # OpenClaw VST Bridge AI - Stato Progetto
 
-**Ultimo aggiornamento:** 2026-04-12 12:21
+**Ultimo aggiornamento:** 2026-04-14 10:56
 
 ---
 
-## ✅ Completato Oggi (Sessione 12/04)
+## ✅ Completato Oggi (Sessione 14/04)
 
 | Componente | Stato | Note |
 |------------|-------|------|
-| **Build Linux VST3** | ✅ | Plugin compilato e installato |
-| **Test Reaper** | ✅ | Plugin funziona con fallback UI |
-| **Debug WebView** | ✅ | Confermato: WebKit/GTK crasha in VST |
-| **Architettura Ponte** | ✅ | Decisa: OSC ↔ UI web esterna |
-| Protocollo JSON v1.0 | ✅ | Documentato e testato |
-| WebViewBridge C++ | ✅ | Implementato (da attivare con ponte) |
-| PluginEditor | ✅ | Fallback UI funzionante |
-| Test Protocollo JSON | ✅ | Python test suite 11/11 passati |
+| **WebSocket Server** | ✅ | RFC 6455 completo, SHA1 inline |
+| **OscBridge** | ✅ | Bidirezionale OSC↔WebSocket |
+| **openclaw-bridge.js** | ✅ | Client React completo |
+| **Build integrata** | ✅ | VST3 + Standalone |
+| **Documentazione** | ✅ | Architettura e protocollo aggiornati |
 
 ---
 
-## 🎉 BUILD COMPLETATA
+## 🎉 OSC BIDIREZIONALE COMPLETATO
 
-**File:** `~/.vst3/OpenClawVSTBridgeAI.vst3` (~30MB)
+**Commit:** `8affe2c` — WebSocket server + OscBridge funzionanti
 
-**Installato:** ✅ Copiato in `~/.vst3/`
-
-**Test Reaper:** ✅ Funziona con UI nativa JUCE
-
----
-
-## 🔴 Problema WebView Risolto
-
-**Problema:** WebView (WebKit/GTK) crasha nel plugin VST su Linux
-
-**Evidenzia:**
-- Forum JUCE: "WebBrowserComponent very poor linux experience"
-- Test reale: Reaper crasha all'apertura
-
-**Soluzione Adottata:** Architettura "Ponte OSC-Web"
-
----
-
-## 🏗️ Architettura Ponte OSC-Web
-
-**Documento:** `Documentazione/architettura-ponte.md`
-
+**Architettura finale:**
 ```
-BROWSER (React) ←──OSC──→ PLUGIN VST (JUCE)
-localhost:3000     :9000    Audio + OSC Server
-   │                           │
-   └──── AI/Ollama (opt) ─────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      BROWSER (React)                        │
+│              localhost:3000 o qualsiasi porta              │
+│                         │                                  │
+│              WebSocket (:8080 via WebSocket)             │
+│                         │                                  │
+│    ┌────────────────────┼────────────────────┐            │
+│    │                    │                    │            │
+│    │    OSC Handler (:9000 via UDP OSC)    │            │
+│    │                    │                    │            │
+│    │            ┌──────┴──────┐             │            │
+│    │            │  OscBridge  │             │            │
+│    │            │ (Dispatcher)│             │            │
+│    │            └──────┬──────┘             │            │
+│    │                    │                    │            │
+│    │           WebSocket Server               │            │
+│    │              (:8080)                   │            │
+│    └────────────────────┼────────────────────┘            │
+│                         │                                  │
+│    ┌────────────────────┼────────────────────┐            │
+│    │                    │                    │            │
+│    │              DAW (Reaper/Ableton)        │            │
+│    │         Invia/Riceve OSC su :9000      │            │
+│    └──────────────────────────────────────────┘            │
+│                                                            │
+│  Flow: DAW → OSC(:9000) → OscBridge → WebSocket → React    │
+│        React → WebSocket → OscBridge → OSC(:9001) → DAW   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Vantaggi:**
-- ✅ Stabile (UI fuori processo)
-- ✅ Libertà totale per Heartbroken (React, Vue, etc.)
-- ✅ Professionale (usato da WebUISynth, juce-webview-tutorial)
-- ✅ Latenza 1-10ms accettabile per controllo
+**Componenti implementati:**
 
-**Componenti:**
-1. **Plugin VST:** JUCE audio + OSC server + fallback UI
-2. **UI Web:** React in browser che parla OSC con plugin
+| File | Descrizione |
+|------|-------------|
+| `src/bridge/WebSocketServer.h/cpp` | Server WebSocket RFC 6455 completo |
+| `src/bridge/OscBridge.h/cpp` | Bridge bidirezionale OSC↔WebSocket |
+| `webview-ui/src/openclaw-bridge.js` | Client React con useOpenClaw hook |
 
 ---
 
@@ -68,76 +66,42 @@ localhost:3000     :9000    Audio + OSC Server
 
 | # | Task | Chi | Priorità |
 |---|------|-----|----------|
-| 1 | Implementare OSC bidirezionale completo | Aura | Alta |
-| 2 | Creare server web per UI React | Heartbroken | Alta |
-| 3 | Integrare client OSC in React | Heartbroken | Media |
-| 4 | Test integrazione end-to-end | Carlo | Media |
-| 5 | Documentare setup sviluppo | Aura | Bassa |
+| 1 | Integrazione AiEngine con OscBridge | Aura | Alta |
+| 2 | UI React completa con widget dinamici | Heartbroken | Alta |
+| 3 | Test end-to-end DAW ↔ Browser | Carlo | Media |
+| 4 | Implementare streaming AI | Aura | Media |
+| 5 | Documentare setup sviluppo HB | Aura | Bassa |
 
 ---
 
-## 📦 File Aggiunti Oggi
+## Commits Sessione 14/04
 
-```
-Documentazione/protocol-json-v1.md         # Protocollo completo
-Documentazione/architettura-ponte.md       # Architettura decisione
-Tools/test_protocol_json.py               # Test suite Python
-third_party/nlohmann/json.hpp             # Libreria JSON
-webview-ui/src/openclaw-bridge.js         # Bridge JS per React
-src/core/PluginEditor.cpp                  # Modificato: fallback UI
-src/core/PluginEditor.h                    # Modificato: WebView
-src/core/PluginProcessor.cpp               # Modificato: includes
-src/core/PluginProcessor.h                 # Modificato: forward decl
-src/ui/WebViewBridge.cpp                   # Implementazione completa
-src/ui/WebViewBridge.h                     # API v1.0
-```
+- `8affe2c` - AURA: WebSocket server con SHA1 inline, OscBridge funzionante
+- `a4e120c` - AURA: Merge standalone build format from heartbroken
+- `e22cbc3` - AURA: Phase 2 - Add WebSocket server and OSC bridge
+- `35d5bf3` - AURA: Update bridge.js for WebSocket + architettura docs
 
 ---
 
-## 🎯 Piano di Lavoro
+## Note
 
-### Fase 1: Foundation (Completata ✅)
-- ✅ Build VST3 funzionante
-- ✅ Protocollo JSON definito
-- ✅ UI fallback stabile
+**WebSocket Server:**
+- Porta configurabile (default 8080)
+- Handshake RFC 6455 con SHA1 inline (no dipendenze esterne)
+- Supporta text frames, close, ping/pong
+- Thread-safe broadcast a tutti i client
 
-### Fase 2: Ponte OSC (Prossima)
-- ⏳ Implementare OSC server completo nel plugin
-- ⏳ UI web base che comunica via OSC
-- ⏳ Test integrazione
+**OscBridge:**
+- Riceve OSC da DAW su porta 9000
+- Invia OSC a DAW su porta 9001
+- Traduce OSC ↔ JSON secondo protocol-json-v1.md
+- Callback per daw.command, daw.request, ai.prompt, ecc.
 
-### Fase 3: AI Integration
-- ⏳ Implementare POST cURL in AiEngine
-- ⏳ Connettere AI al flusso OSC
-
-### Fase 4: Polish
-- ⏳ UI React completa (Heartbroken)
-- ⏳ Test multi-DAW (Reaper, Ableton)
-- ⏳ Release
+**Protocollo:**
+- JSON v1.0 implementato completamente
+- Tutti i tipi di messaggio supportati
+- Bidirezionale e async
 
 ---
 
-## Commits Sessione
-
-- `fcf4a4a` - AURA: Forza fallback UI - WebView GTK crasha in VST
-- `5199ce5` - AURA: BUILD COMPLETATA! Plugin VST3 creato
-- `482cb93` - AURA: Update STATUS con test protocollo JSON
-- `3100ba1` - AURA: Add test suite protocollo JSON v1.0
-- `036cb16` - AURA: Fix nome prodotto senza spazi
-- `ce7b93b` - AURA: Fix ordine linking JUCE
-- `45d00c4` - AURA: Protocollo JSON C++↔JavaScript v1.0
-
----
-
-## Note per Prossima Sessione
-
-**Ripartire da:**
-1. Implementazione OSC bidirezionale nel plugin
-2. Creare server web base per UI React
-3. Testare comunicazione plugin ↔ browser
-
-**Plugin funzionante in:** `~/.vst3/OpenClawVSTBridgeAI.vst3`
-
----
-
-*Sessione completata con successo. Build funzionante, architettura definita.*
+*Sessione completata: OSC bidirezionale funzionante, pronto per UI React.*
