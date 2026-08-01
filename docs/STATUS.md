@@ -1,118 +1,89 @@
-# WhyCremisi VST Bridge AI - Stato Progetto
+# Stato del progetto — WhyCremisi
 
-**Ultimo aggiornamento:** 2026-05-11 — Claude (sessione OSC fix + review work-in-progress)
-
----
-
-## ✅ Completato — Sessione 11/05 (Claude — OSC fix + review WIP)
-
-| Fix | File | Dettaglio |
-|-----|------|-----------|
-| OSC parsing double null skip | `src/osc/OscHandler.cpp` | Rimosso `ptr++` erroneo dopo padding (linea 133) — causava misalignment e type tag saltato |
-| Verified build [100%] | `CMakeLists.txt` | VST3 + AU + Standalone compilano con nuovi moduli (MidiHandler, ParameterMapper, PluginChain, DSPEngine) |
-| Nuovi moduli C++ | `src/core/`, `src/midi/`, `src/dsp/` | MidiHandler, ParameterMapper, PluginChain, DSPEngine (Analyzer, Compressor, Limiter, EQBand) |
-| Refactor OscBridge | `src/bridge/OscBridge.cpp` | `sendConfigResponse()` per risposte configurabili, dispatch MIDI learn, chain management, AI action execution |
-| 8 gain parameters | `src/core/PluginProcessor.cpp` | Da 2 a 8 parametri gain, midi learn routing, DSP processing, analyzer data push |
-| MIDI Learn UI | `webview-ui/src/App.jsx` | Pulsante LEARN sui widget, pannello Parameter Mapping, pannello Plugin Chain |
-| AI Action log | `webview-ui/src/App.jsx` | Undo/redo azioni AI, action log timeline |
-| Bridge API | `webview-ui/src/whycremisi-bridge.js` | `midiLearnStart()`, `midiLearnStop()`, `getPluginChain()`, `setPluginChain()` |
-| AiEngine refactor | `src/ai/AiEngine.cpp/h` | Action callbacks, widget context, provider deduplicazione estesa |
-
-**Build verificata:** VST3 + AU + Standalone compilati senza errori su macOS, JUCE 8.0.12.
-
-**Build verificata:** VST3 + Standalone compilati senza errori su macOS 12.6.3, JUCE 8.0.12.
+**Ultimo aggiornamento:** 1 agosto 2026
 
 ---
 
-## ✅ Completato (Sessione 2 — 14/04 pomeriggio)
+## In breve
 
-### Bug fixes critici
-| Fix | Dettaglio |
-|-----|-----------|
-| OscHandler duplicato | Rimosso da PluginProcessor, solo OscBridge gestisce OSC |
-| SHA1 handshake WebSocket | Endianness e padding corretti |
-| Key extraction WebSocket | `substring(16)` invece di `indexOfChar(':')` |
-| isRunning() OscHandler | Ora controlla `connected` oltre a `running` |
-| OSC addresses Reaper | `/play`, `/stop`, `/record` (formato breve) |
-| DAW target IP | `192.168.1.12:8000` (IP locale Reaper) |
-
-### Integrazione UI WhyCremisi
-| Componente | File | Stato |
-|------------|------|-------|
-| BotFace avatar animato | `webview-ui/src/components/BotFace.jsx` | ✅ Copiato da prototipo |
-| Design system WhyCremisi | `webview-ui/src/index.css` | ✅ Tailwind + custom CSS |
-| App principale | `webview-ui/src/App.jsx` | ✅ Refactoring completo |
-| Toolbox con transport | `webview-ui/src/components/Toolbox.jsx` | ✅ Bridge WebSocket |
-| Bridge compatibilità | `webview-ui/src/whycremisi-bridge.js` | ✅ +`window.receiveFromPlugin`, `__whycremisiBridge` |
-| Dipendenze | `package.json` | ✅ framer-motion, tailwindcss |
-| Vite config | `vite.config.js` | ✅ +tailwindcss plugin |
-| HTML | `index.html` | ✅ Space Grotesk, Material Symbols |
-| Documentazione team | `Documentazione/09-GUIDA-SVILUPPO.md` | ✅ Nuova guida |
-
-### Build
-- ✅ Frontend production build (Vite + Tailwind) — successo
-- ✅ VST3 build C++ — successo
-- ✅ Standalone build C++ — successo
-- ✅ VST3 installato in `~/.vst3/`
+Il plugin esiste, è grosso e funziona su macOS. Su Windows non compilava più: in questa sessione è stato rimesso in piedi. La UI React è completa e si compila ovunque. Il grosso del lavoro rimasto è verifica sul campo dentro i DAW, test automatici e CI.
 
 ---
 
-## 🔧 Cosa funziona
+## Sessione 1 agosto 2026 — ritorno su Windows
 
-- WebSocket handshake — browser si connette e rimane connesso
-- OSC Plugin → Reaper: Play, Stop, Rec funzionano (`/play`, `/stop`, `/record`)
-- OSC ricezione: il plugin ascolta su porta 9000, invia a 192.168.1.12:8000
-- UI WhyCremisi: Header, Side Module, AI Chat Console con BotFace, Toolbox, Vector Scope placeholder, Footer
-- Bridge: `whycremisi.sendDAWCommand()`, `whycremisi.sendAIPrompt()`, auto-reconnect, request/response con timeout
-- Compatibilità C++ WebView: `window.receiveFromPlugin()` e `window.__whycremisiBridge`
+Il progetto era nato su Windows, è proseguito su Mac da maggio a giugno, e a fine luglio è tornato su Windows. In mezzo il team si è ridotto a una persona.
 
----
+### Stato dei branch
 
-## ⚠️ Da fare
+I rami `master` e `heartbroken-claude` si sono separati il 09/05/2026 al commit `811bae3`:
 
-| # | Task | Priorità |
-|---|------|----------|
-| 1 | Mappare tutti i parametri OSC Reaper (volume, pan, mute, solo, tempo, position) | Alta |
-| 2 | Verificare OSC Reaper → Plugin (feedback bidirezionale) | Alta |
-| 3 | Preferences configurabili (IP/porte OSC e WebSocket senza editare codice) | Media |
-| 4 | Documentazione parametri OSC/WS per Edo | Media |
-| 5 | WebSocket reconnect logic cleanup | Bassa |
-| 6 | Vector Scope con dati audio reali (ora riceve dall'analyzer!) | Bassa |
-| 7 | Supporto OSC Ableton | Media |
-| 8 | `getCurrentPosition` deprecato → usare `getPosition` in PluginProcessor | Bassa |
+- `heartbroken-claude` — 50 commit di codice: riorganizzazione del progetto, sistema logo completo, AI function calling, gestione del contesto, stabilità, fix crash, UI widget. **È il ramo con il codice vero.**
+- `master` — 30 commit del 6-7 giugno: README, branding, landing page GitHub Pages. Nessun codice nuovo.
 
----
+`heartbroken` e `aura` sono interamente contenuti in `heartbroken-claude`.
 
-## 📊 Impostazioni OSC Reaper
+**I due rami vanno ancora riunificati.**
 
-- Device port: 9000 (invio)
-- Device IP: 127.0.0.1
-- Local listen port: 8000 (ricezione)
-- Local IP: 192.168.1.12 (non modificabile)
+### Build Windows sbloccata
 
----
+Quattro problemi, tutti risolti:
 
-## 📁 Struttura Frontend Produzione
+| Problema | File | Soluzione |
+|---|---|---|
+| `SIGPIPE` non esiste su Windows | `src/core/PluginProcessor.cpp` | guard `#if ! JUCE_WINDOWS` |
+| `withResourceProvider` non compilava | `CMakeLists.txt` | `NEEDS_WEBVIEW2 TRUE` + `JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1` |
+| UI React cercata solo nel bundle macOS | `src/core/PluginEditor.cpp` | nuova `findUIDirectory()` che prova bundle macOS, VST3 Windows e cartella accanto all'eseguibile |
+| dist React copiata solo `if(APPLE)` | `CMakeLists.txt` | ramo Windows che la copia nel VST3 e accanto allo standalone |
 
-```
-webview-ui/
-├── src/
-│   ├── App.jsx               # UI WhyCremisi completa
-│   ├── whycremisi-bridge.js     # Bridge WebSocket RFC 6455
-│   ├── index.css              # Tailwind + stili WhyCremisi
-│   ├── main.jsx
-│   └── components/
-│       ├── BotFace.jsx        # Avatar SVG morphing animato
-│       ├── Toolbox.jsx        # Widget system + transport
-│       ├── WidgetSlider.jsx
-│       ├── WidgetKnob.jsx
-│       ├── WidgetButton.jsx
-│       └── index.js
-├── index.html
-├── package.json               # +framer-motion, +tailwindcss
-└── vite.config.js             # +@tailwindcss/vite plugin
-```
+In più: il log di debug era hardcoded su `/tmp/whycremisi-debug.log`, percorso inesistente su Windows. Ora passa da `whycremisi::debugLogFile()` (`src/debug/DebugLog.h`) che usa la cartella temporanea di sistema.
+
+### Regole del progetto riscritte
+
+`WORKFLOW.md`, `QUICKSTART-IT.md` e `TODO.md` erano costruiti sul team a tre (Edo + Carlo/Aura + Heartbroken): branch personali, prefissi obbligatori nei commit, aree di codice vietate, review incrociata. Carlo non lavora più al progetto: quell'impianto è stato rimosso e sostituito con un flusso a una persona.
 
 ---
 
-*Ultimo aggiornamento: 2026-04-14 — Aura*
+## Cosa funziona
+
+- **Bridge OSC** plugin → DAW: play, stop, record verificati su Reaper
+- **WebSocket server** RFC 6455 scritto a mano, handshake e riconnessione con backoff
+- **UI React** completa: BotFace, SessionPanel, 13 box modulari, sistema widget, tema chiaro/scuro, ricerca, export/import sessione
+- **Motore AI** multi-provider (Groq, Gemini, Anthropic, OpenAI, OpenRouter, Ollama) con function calling e gestione del contesto
+- **DSP**: analyzer FFT, LUFS, correlazione stereo, compressore, limiter, EQ
+- **Memoria dell'agente**: flight recorder degli eventi di sessione, personalità, workspace
+- **MIDI learn** e mappatura parametri
+- **Build**: VST3 + AU + Standalone su macOS; VST3 + Standalone su Windows
+
+## Cosa non è mai stato verificato davvero
+
+- Il plugin caricato in **Ableton** (su Reaper sì)
+- Il **feedback OSC dal DAW verso il plugin** (la direzione inversa)
+- Il comportamento su **Windows dentro un DAW reale** — compila, ma non è ancora stato provato in sessione
+- Il **supporto Ableton**: `AbletonDawHandler` è poco più di uno scheletro
+
+---
+
+## Roadmap
+
+`docs/ROADMAP.md` contiene 100 step in 7 fasi.
+
+**Completati:** 1-49, 52, 54, 55, 57, 58, 60, 63, 64, 65, 75, 76, 77
+**Aperti:** 50, 51, 53, 56, 59, 61, 62, 66-74, 78-100
+
+Il blocco 78-100 è quello che pesa: test React, test end-to-end, CI, changelog, documentazione API, e tutta la fase 7 (feature avanzate).
+
+---
+
+## Ambiente di sviluppo
+
+| | Windows | macOS |
+|---|---|---|
+| Copia di lavoro | `E:\Dev\WhyCremisi` | — |
+| JUCE | 8.0.4 in `E:\CARTELLE\JUCE` | 8.0.12 |
+| Compilatore | MSVC 14.50 (Build Tools 2026) | Xcode CLT |
+| CMake | 4.3.1 | — |
+| Node | 24.15 | — |
+| WebView2 | pacchetto NuGet in `E:\CARTELLE\NuGet` | non serve |
+
+Le due versioni di JUCE andrebbero allineate: le API della WebView cambiano fra 8.0.4 e 8.0.12.

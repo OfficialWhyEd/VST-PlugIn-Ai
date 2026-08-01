@@ -1,9 +1,8 @@
 # WhyCremisi VST Bridge AI — Development Plan
 
-**Branch:** `heartbroken-claude`  
-**Last Updated:** 2026-05-12 (session 3)  
-**Commit:** `96db77e`  
-**Platform:** macOS 12.7.6 (Monterey), Intel x86_64, JUCE 8.0.12
+**Last Updated:** 2026-08-01  
+**Piano creato:** 2026-05-12 su macOS 12.7.6 (Intel x86_64, JUCE 8.0.12)  
+**Sviluppo attuale:** Windows 10 (MSVC 14.50, JUCE 8.0.4) — vedi `STATUS.md`
 
 ---
 

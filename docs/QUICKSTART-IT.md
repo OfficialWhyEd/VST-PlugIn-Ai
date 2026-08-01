@@ -1,101 +1,114 @@
-# 🚀 GUIDA RAPIDA - WhyCremisi VST Bridge AI
+# Guida rapida — WhyCremisi
 
-## 📍 Dove Trovare le Cose
-
-| Cosa Cerci | File |
-|------------|------|
-| **Regole collaborazione** | `WORKFLOW.md` ⭐ |
-| **Stato attuale** | `STATUS.md` |
-| **Task da fare** | `PENDING_TODO.md` |
-| **Fasi sviluppo** | `Documentazione/03-ROADMAP-FASI.md` |
-| **Build/Compile** | `README-BUILD.md` |
-| **Protocollo JSON** | `Documentazione/protocol-json-v1.md` |
-| **Architettura** | `Documentazione/architettura-ponte.md` |
-| **Indice completo** | `Documentazione/00-INDICE.md` |
+**Ultimo aggiornamento:** 1 agosto 2026
 
 ---
 
-## ⛔ REGOLE SACRE
+## Cos'è
 
-### 1. Prima di Modificare
-```bash
-git diff                # vedi cosa stai per cambiare
-git status              # controlla stato
-git log --oneline -5    # vedi ultimi commit (c'è roba di Aura?)
-```
-
-### 2. Heartbroken (HB) - Divieti Assoluti
-- ❌ **MAI** cancellare file/cartelle senza chiedere ad Aura
-- ❌ **MAI** modificare `CMakeLists.txt`, `src/core/`, `src/osc/`
-- ❌ **MAI** pushare direttamente su `master` (usa branch `heartbroken`)
-- ❌ **MAI** creare branch nuovi senza chiedere
-- ✅ **SOLO** `src/ui/`, `src/ui/frontend/`, asset grafici
-
-**Se dubbi → Chiedi prima.**
-
-### 3. Revisione Incrociata
-- HB fa PR → Aura revisiona → Aura merge
-- Commit identificati: `AURA: ...` o `Heartbroken: ...`
-- Nessun merge diretto su `master` senza review
-
-### 4. Dopo Ogni Push/Modifica
-**Leggere subito** `Documentazione/03-ROADMAP-FASI.md` e aggiornare:
-- Checkbox task completati
-- Stato fase corrente
-- Prossimi milestone
+Un plugin (VST3 / AU / Standalone) che si carica sul master della sessione e fa da co-pilota AI: legge l'audio, parla col DAW via OSC, espone i parametri di tutti i plugin caricati e li rende manovrabili da un'AI. L'interfaccia è React, dentro una WebView.
 
 ---
 
-## 👥 Ruoli
+## Dove trovare le cose
 
-| Chi | Cosa Fa | Non Tocca |
-|-----|---------|-----------|
-| **Aura** | Backend C++, OSC, AI Engine, Build, Documentazione tecnica | UI React (salvo emergenze) |
-| **Heartbroken** | UI React, Frontend, Asset grafici, Design | Backend, Protocolli, CMake, Docs tecniche |
+| Cosa cerchi | File |
+|-------------|------|
+| Come si lavora al progetto | `docs/WORKFLOW.md` |
+| Stato attuale | `docs/STATUS.md` |
+| I 100 step di sviluppo | `docs/ROADMAP.md` |
+| Architettura | `docs/ARCHITECTURE.md` |
+| Protocollo di comunicazione | `docs/project/protocol-json-v1.md` |
+| Documenti di prodotto (IT + EN) | `Research/italiano/`, `Research/inglese/` |
+| Loghi e icone | `Research/logo/` |
 
 ---
 
-## 🔄 Workflow Git in 5 Passi
+## Compilare
+
+### Prerequisiti
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Compilatore | Visual Studio Build Tools 2022+ | Xcode Command Line Tools | GCC/Clang |
+| CMake | 3.20+ | 3.20+ | 3.20+ |
+| JUCE | 8.0.5+ | 8.0.5+ | 8.0.5+ |
+| Node | 20+ | 20+ | 20+ |
+| Extra | pacchetto NuGet `Microsoft.Web.WebView2` | — | `libwebkit2gtk-4.1`, `gtk+-3.0` |
+
+JUCE si trova tramite la variabile d'ambiente `JUCE_ROOT`, oppure dai percorsi noti elencati in cima al `CMakeLists.txt`.
+
+### Prima la UI, poi il plugin
+
+La UI React va compilata **prima**: il `CMakeLists.txt` copia `webview-ui/dist` dentro il bundle del plugin, e se la dist non esiste il plugin si apre vuoto.
 
 ```bash
-# 1. Prima di lavorare
-git switch main && git pull origin main
+cd webview-ui
+npm install
+npm run build
+cd ..
+```
 
-# 2. Crea branch (HB solo da 'heartbroken', Aura da 'main')
-git switch -c feat/nome-feature
+### Windows
 
-# 3. Committa con identificativo
-git commit -m "AURA: fix OscHandler timeout"      # per Aura
-git commit -m "Heartbroken: add GainSlider"       # per HB
+```powershell
+$env:JUCE_ROOT = "E:\CARTELLE\JUCE"
+cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64
+cmake --build build-win --config Release --parallel 4
+```
 
-# 4. Push e PR
-git push origin feat/nome-feature
-# Poi apri PR su GitHub, aspetta review
+Se CMake non trova WebView2:
 
-# 5. Dopo merge: aggiorna roadmap
-# Leggi Documentazione/03-ROADMAP-FASI.md, spunta task, aggiorna stato
+```powershell
+Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2
+Install-Package Microsoft.Web.WebView2 -Scope CurrentUser -RequiredVersion 1.0.1901.177 -Source nugetRepository
+```
+
+Oppure scompatta il `.nupkg` dove vuoi e passa `-DJUCE_WEBVIEW2_PACKAGE_LOCATION="percorso/della/cartella"`.
+
+Il VST3 esce in `build-win/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisi.vst3` — copialo in `C:\Program Files\Common Files\VST3\`.
+
+### macOS
+
+```bash
+export JUCE_ROOT=/Users/whyed/Documents/Dev/SDKs/JUCE
+cmake -B build
+cmake --build build --config Release
+cp -r build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisi.vst3 ~/Library/Audio/Plug-Ins/VST3/
 ```
 
 ---
 
-## 🆘 Checklist Pre-Push
+## Sviluppare la UI col live reload
 
-- [ ] `git status` — so cosa sto per committare
-- [ ] `git log -5` — ho verificato se c'è roba di Aura/HB
-- [ ] Commit inizia con `AURA:` o `Heartbroken:`
-- [ ] Se HB: sono su branch `heartbroken` o feature branch da esso
-- [ ] Se modifiche ad area "non mia": ho chiesto prima
-- [ ] **Dopo push**: apro roadmap e aggiorno stato
+Il plugin, all'apertura, cerca un dev server Vite su `localhost:5173` e poi su `4173`. Se lo trova lo usa al posto del bundle interno — quindi puoi modificare la UI e vedere il risultato dentro il DAW senza ricompilare il C++.
 
----
+```bash
+cd webview-ui
+npm run dev
+```
 
-## 📞 Emergenze
-
-**Cancellato roba per sbaglio?** → `git reflog` + recupero immediato  
-**Conflitti?** → Fermati, avvisa, non forzare  
-**Dubbi?** → Chiedi prima di agire
+Poi apri il plugin nel DAW.
 
 ---
 
-*Ultimo aggiornamento: 2026-04-12*  
-*Fonte della verità: `WORKFLOW.md`*
+## Impostare l'OSC in Reaper
+
+Options → Preferences → Control/OSC/web → Add → OSC:
+
+| Campo | Valore |
+|-------|--------|
+| Device port | 9000 |
+| Device IP | 127.0.0.1 |
+| Local listen port | 8000 |
+
+Il plugin ascolta su 9000 e invia sulla porta 8000 dell'IP configurato.
+
+---
+
+## Se qualcosa va storto
+
+- **Il plugin si apre ma è vuoto** → manca `webview-ui/dist`: compila la UI e ricompila il plugin
+- **`withResourceProvider` non compila** → WebView2 non è attivo, vedi la sezione Windows sopra
+- **Il DAW non risponde ai comandi** → controlla porte e IP OSC; il plugin logga in console cosa invia
+- **Hai cancellato qualcosa per sbaglio** → `git reflog`, poi `git checkout <hash>`

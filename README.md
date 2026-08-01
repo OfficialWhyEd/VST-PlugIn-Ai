@@ -47,19 +47,35 @@
 
 ---
 
-## Build (macOS)
+## Build
+
+Prerequisiti: CMake 3.20+, Node 20+, JUCE 8, e un compilatore C++17 (Xcode CLT su macOS, Visual Studio Build Tools su Windows).
+
+La UI React va compilata **prima** del plugin: viene copiata dentro il bundle.
 
 ```bash
-git clone https://github.com/OfficialWhyEd/WhyCremisi
-cd WhyCremisi
+git clone https://github.com/OfficialWhyEd/VST-PlugIn-Ai
+cd VST-PlugIn-Ai
 
-# Prerequisiti: CMake, Xcode Command Line Tools, JUCE 7
-cmake -B build -DJUCE_ROOT=/path/to/JUCE
-cmake --build build --config Release
-
-# Installa
-cp -r build/WhyCremisi_artefacts/VST3/WhyCremisi.vst3 ~/Library/Audio/Plug-Ins/VST3/
+cd webview-ui && npm install && npm run build && cd ..
 ```
+
+**macOS**
+```bash
+export JUCE_ROOT=/path/to/JUCE
+cmake -B build
+cmake --build build --config Release
+cp -r build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisi.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+**Windows** — serve anche il pacchetto NuGet `Microsoft.Web.WebView2` (JUCE lo usa per la WebView).
+```powershell
+$env:JUCE_ROOT = "C:\path\to\JUCE"
+cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64
+cmake --build build-win --config Release --parallel 4
+```
+
+Dettagli e risoluzione problemi in [`docs/QUICKSTART-IT.md`](docs/QUICKSTART-IT.md).
 
 ---
 

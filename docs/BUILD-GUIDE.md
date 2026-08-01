@@ -1,210 +1,153 @@
-# WhyCremisi VST Bridge AI - Build Instructions
+# Build guide — WhyCremisi
 
-**Cross-platform build guide for Linux, Windows, and macOS.**
+**Ultimo aggiornamento:** 1 agosto 2026
+
+Guida completa per Windows, macOS e Linux. Per la versione breve vedi [`QUICKSTART-IT.md`](QUICKSTART-IT.md).
 
 ---
 
-## 📋 Prerequisites (All Platforms)
+## Prerequisiti comuni
 
-### Required Tools
-- **CMake** >= 3.20
-- **JUCE** >= 7.0.12 (download from [juce.com](https://juce.com/get-juce))
+- **CMake** ≥ 3.20
+- **JUCE 8** — [juce.com/get-juce](https://juce.com/get-juce)
+- **Node** ≥ 20 (per la UI React)
 - **Git**
 
-### Platform-Specific Prerequisites
+cURL non serve: le chiamate HTTP verso i provider AI usano il client nativo di JUCE. Nemmeno OpenSSL serve: lo SHA1 dell'handshake WebSocket è implementato dentro il progetto, così la build resta identica su tutte le piattaforme.
 
-#### Linux (Ubuntu/Debian)
+### Dove mettere JUCE
+
+Il `CMakeLists.txt` cerca JUCE in quest'ordine:
+
+1. variabile d'ambiente `JUCE_ROOT`
+2. una lista di percorsi noti scritti in cima al file
+
+Se lavori su una macchina nuova, imposta la variabile d'ambiente oppure aggiungi il tuo percorso alla lista.
+
 ```bash
-# JUCE dependencies
-sudo apt update
-sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
-    libxcursor-dev libgl-dev libfreetype6-dev libxcomposite-dev \
-    mesa-common-dev libgl1-mesa-dev
-
-# NEW: cURL for AI HTTP requests
-sudo apt install libcurl4-openssl-dev
-
-# GTK and WebKit (for WebView support)
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
+export JUCE_ROOT=/percorso/di/JUCE          # macOS / Linux
 ```
-
-#### Windows (Visual Studio)
-1. **Visual Studio 2022** with "Desktop development with C++" workload
-2. **vcpkg** (Microsoft's C++ package manager)
-   ```cmd
-   # Install vcpkg (one time)
-   git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-   C:\vcpkg\bootstrap-vcpkg.bat
-   
-   # Install cURL
-   C:\vcpkg\vcpkg.exe install curl:x64-windows-static
-   ```
-3. Set environment variable:
-   ```cmd
-   setx VCPKG_ROOT "C:\vcpkg"
-   ```
-
-#### macOS
-```bash
-# Using Homebrew
-brew install cmake curl
-
-# JUCE dependencies usually already present on macOS
+```powershell
+$env:JUCE_ROOT = "E:\CARTELLE\JUCE"          # Windows, sessione corrente
+setx JUCE_ROOT "E:\CARTELLE\JUCE"            # Windows, permanente
 ```
 
 ---
 
-## 🔧 Setup
+## Passo 1 — la UI React
 
-### 1. Clone Repository
+**Va fatta sempre per prima.** Il `CMakeLists.txt` copia `webview-ui/dist` dentro il bundle del plugin al momento del build; se la dist non c'è, il plugin si apre su una finestra vuota.
+
 ```bash
-git clone https://github.com/OfficialWhyEd/VST-PlugIn-Ai.git
-cd VST-PlugIn-Ai
-```
-
-### 2. Download and Setup JUCE
-
-Download JUCE from [juce.com/get-juce](https://juce.com/get-juce) and extract to:
-
-| Platform | Recommended Path |
-|----------|------------------|
-| Linux | `/home/carlo/SDKs/JUCE` |
-| Windows | `C:\SDKs\JUCE` |
-| macOS | `/Users/edo/SDKs/JUCE` |
-
-Set environment variable:
-```bash
-# Linux/macOS
-export JUCE_ROOT="/home/carlo/SDKs/JUCE"
-
-# Windows (in Command Prompt)
-setx JUCE_ROOT "C:\SDKs\JUCE"
+cd webview-ui
+npm install
+npm run build
+cd ..
 ```
 
 ---
 
-## 🏗️ Build
+## Passo 2 — il plugin
 
-### Linux
-```bash
-export JUCE_ROOT=/home/carlo/SDKs/JUCE
-cmake -B build -DJUCE_ROOT=$JUCE_ROOT
-cmake --build build --config Release
+### Windows
 
-# Install VST3 to user directory
-cp build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTPlugin.vst3 ~/.vst3/
+Oltre ai prerequisiti comuni servono:
+
+- **Visual Studio Build Tools 2022 o 2026**, workload "Desktop development with C++"
+- il pacchetto NuGet **Microsoft.Web.WebView2** — JUCE lo linka staticamente per la WebView. Senza, l'intera API `Options::withResourceProvider` viene esclusa dalla compilazione e il plugin non compila.
+
+```powershell
+Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2
+Install-Package Microsoft.Web.WebView2 -Scope CurrentUser -RequiredVersion 1.0.1901.177 -Source nugetRepository
 ```
 
-### Windows (with vcpkg)
-```cmd
-# Open "Developer Command Prompt for VS 2022"
+In alternativa scarica il `.nupkg` da nuget.org, scompattalo dove vuoi (è uno zip) e passa la cartella *contenitore* a CMake:
 
-# Configure with vcpkg toolchain
-cmake -B build -G "Visual Studio 17 2022" -A x64 ^
-    -DJUCE_ROOT=C:\SDKs\JUCE ^
-    -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake
-
-# Build
-cmake --build build --config Release
-
-# VST3 location (copy to your DAW's VST3 folder)
-build\WhyCremisiVSTPlugin_artefacts\Release\VST3\WhyCremisiVSTPlugin.vst3
+```powershell
+cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64 -DJUCE_WEBVIEW2_PACKAGE_LOCATION="E:/CARTELLE/NuGet"
 ```
+
+Build:
+
+```powershell
+$env:JUCE_ROOT = "E:\CARTELLE\JUCE"
+cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64
+cmake --build build-win --config Release --parallel 4
+```
+
+Risultato in `build-win/WhyCremisiVSTPlugin_artefacts/Release/`:
+- `VST3/WhyCremisi.vst3` (la UI React è dentro, in `Contents/Resources/webview-ui`)
+- `Standalone/WhyCremisi.exe` (la UI sta nella cartella `webview-ui` accanto all'exe)
+
+Nota: su Windows JUCE non genera il formato AU — è esclusivo di macOS, e viene ignorato senza errori.
 
 ### macOS
+
 ```bash
-export JUCE_ROOT=/Users/edo/SDKs/JUCE
-cmake -B build -DJUCE_ROOT=$JUCE_ROOT -G "Xcode"
+export JUCE_ROOT=/percorso/di/JUCE
+cmake -B build
 cmake --build build --config Release
+```
 
-# Install VST3
-cp -R build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisiVSTPlugin.vst3 ~/Library/Audio/Plug-Ins/VST3/
+Risultato in `build/WhyCremisiVSTPlugin_artefacts/Release/`: `VST3/`, `AU/`, `Standalone/`.
+
+### Linux
+
+Dipendenze di sistema:
+
+```bash
+sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+    libxcursor-dev libgl-dev libfreetype6-dev libxcomposite-dev \
+    mesa-common-dev libgl1-mesa-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+```bash
+export JUCE_ROOT=/percorso/di/JUCE
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+cmake --install build      # copia il VST3 in ~/.vst3 e le icone in ~/.local/share/icons
 ```
 
 ---
 
-## 🧪 Test
+## Dove installare il VST3
 
-### Verify Build
-```bash
-# Linux/macOS - list built files
-ls -la build/WhyCremisiVSTPlugin_artefacts/Release/
-
-# Windows - check VST3 was created
-dir build\WhyCremisiVSTPlugin_artefacts\Release\VST3\
-```
-
-### Load in DAW
-1. Open Ableton Live, Reaper, or other VST3-compatible DAW
-2. Scan/rescan VST3 plugins
-3. Load "WhyCremisi VST Bridge AI"
-4. Check that the GUI appears (800x600 window with knobs)
+| Piattaforma | Cartella |
+|-------------|----------|
+| Windows | `C:\Program Files\Common Files\VST3\` |
+| macOS | `~/Library/Audio/Plug-Ins/VST3/` |
+| Linux | `~/.vst3/` |
 
 ---
 
-## 🐛 Troubleshooting
+## Test unitari C++
 
-### "JUCE not found"
-- Verify `JUCE_ROOT` environment variable
-- Check that path exists: `ls $JUCE_ROOT` (Linux/macOS) or `dir %JUCE_ROOT%` (Windows)
+Sono disattivati di default:
 
-### "CURL not found" (Linux)
 ```bash
-sudo apt install libcurl4-openssl-dev
-# Verify: pkg-config --exists curl && echo "OK"
-```
-
-### "CURL not found" (Windows)
-- Ensure vcpkg is installed and `VCPKG_ROOT` is set
-- Re-run: `vcpkg install curl:x64-windows-static`
-- Use full path to vcpkg.cmake in CMake command
-
-### Build Errors
-```bash
-# Clean rebuild
-rm -rf build
-cmake -B build ...
+cmake -B build -DBUILD_UNIT_TESTS=ON
 cmake --build build
 ```
 
----
-
-## 📝 For Heartbroken (Edo's AI Assistant)
-
-### What Changed Recently (Aura Branch)
-1. **cURL Added**: Now required for AI HTTP requests (Ollama, Gemini, etc.)
-2. **OscHandler**: Now bidirectional - can send AND receive OSC messages
-3. **AiEngine**: HTTP infrastructure implemented (cURL-based)
-
-### Your Tasks (UI Development)
-1. Set up Windows build environment (see above)
-2. Test that plugin loads in Ableton Live
-3. Continue React/WebView UI development in `src/ui/`
-4. Communicate any build issues to Carlo/Aura
-
-### Communication Protocol
-- **Git commits**: Start with "Heartbroken: " (e.g., "Heartbroken: Added GainSlider component")
-- **Before push**: Check WORKFLOW.md rules
-- **Issues**: Comment on GitHub or notify Carlo
+Ci sono anche script Python di test in `tests/` e `test_tools/`: server OSC e WebSocket finti per provare il bridge senza aprire un DAW.
 
 ---
 
-## 🔄 Continuous Integration (Future)
+## Problemi noti
 
-GitHub Actions will be set up to:
-- Build on Linux (Ubuntu), Windows (VS2022), macOS (Xcode)
-- Run unit tests
-- Package VST3 releases
+**"JUCE not found"** — `JUCE_ROOT` non impostata o percorso inesistente.
 
----
+**"Could NOT find WebView2"** (Windows) — manca il pacchetto NuGet, vedi sopra.
 
-## 📞 Support
+**Il plugin si apre vuoto** — manca `webview-ui/dist`. Compila la UI e ricompila il plugin. In fase di sviluppo puoi anche lasciare `npm run dev` in esecuzione: il plugin cerca un dev server Vite su `localhost:5173` e `4173` e lo preferisce al bundle interno.
 
-- **Carlo (Linux)**: Build issues, backend C++, OSC
-- **Edo (Windows)**: Build issues, UI testing, Ableton integration
-- **Aura**: Documentation, code review, architecture
+**Build sporca** — cancella la cartella `build*` e riconfigura da zero. Su Windows la prima configurazione richiede qualche minuto perché JUCE compila `juceaide`.
 
 ---
 
-*Last updated: 11 April 2026*
-*Branch: aura (Carlo/Aura development)*
+## Da fare
+
+- [ ] GitHub Actions: build automatica su Windows e macOS a ogni push
+- [ ] Release automatiche con changelog
+- [ ] Firma del binario Windows
+- [ ] Notarizzazione macOS
