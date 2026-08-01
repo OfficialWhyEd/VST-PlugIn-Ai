@@ -29,6 +29,26 @@ message(STATUS "JUCE_ROOT: ${JUCE_ROOT}")
 add_subdirectory(${JUCE_ROOT} JUCE)
 
 # ==============================================================================
+# WebView2 (Windows) — required for WebBrowserComponent's resource provider
+# ==============================================================================
+# On Windows the WebView is backed by Microsoft Edge WebView2, which JUCE links
+# from the Microsoft.Web.WebView2 NuGet package. Without it the whole
+# Options::withResourceProvider API is compiled out and the React UI cannot load.
+#
+# Install with:
+#   Register-PackageSource -provider NuGet -name nugetRepository -location https://www.nuget.org/api/v2
+#   Install-Package Microsoft.Web.WebView2 -Scope CurrentUser -RequiredVersion 1.0.1901.177 -Source nugetRepository
+# or unpack the .nupkg anywhere and point JUCE_WEBVIEW2_PACKAGE_LOCATION at it.
+
+if(WIN32 AND NOT DEFINED JUCE_WEBVIEW2_PACKAGE_LOCATION)
+    if(DEFINED ENV{JUCE_WEBVIEW2_PACKAGE_LOCATION})
+        set(JUCE_WEBVIEW2_PACKAGE_LOCATION "$ENV{JUCE_WEBVIEW2_PACKAGE_LOCATION}")
+    elseif(EXISTS "E:/CARTELLE/NuGet")
+        set(JUCE_WEBVIEW2_PACKAGE_LOCATION "E:/CARTELLE/NuGet")  # Windows (Edo)
+    endif()
+endif()
+
+# ==============================================================================
 # cURL - Not required (AI uses JUCE native HTTP)
 # ==============================================================================
 
@@ -52,6 +72,7 @@ juce_add_plugin(WhyCremisiVSTPlugin
     # VST3: Ableton, REAPER, FL Studio, Cubase, Studio One, Bitwig, Pro Tools (via wrapper)
     # AU:   Logic Pro, GarageBand (macOS only — ignored on Windows/Linux)
     FORMATS VST3 AU Standalone
+    NEEDS_WEBVIEW2 TRUE
     PRODUCT_NAME "WhyCremisi"
     BUNDLE_ID "com.whycremisi.plugin"
     AU_MAIN_TYPE "kAudioUnitType_Effect"
@@ -64,6 +85,15 @@ juce_add_plugin(WhyCremisiVSTPlugin
 target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
+
+# Windows: attiva il backend WebView2 (linkato staticamente dal pacchetto NuGet).
+# Senza questo JUCE_WEB_BROWSER_RESOURCE_PROVIDER_AVAILABLE resta 0 e la UI React
+# non è raggiungibile dal plugin.
+if(WIN32)
+    target_compile_definitions(WhyCremisiVSTPlugin PRIVATE
+        JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+    )
+endif()
 
 # ==============================================================================
 # Source Files
@@ -204,6 +234,38 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ICNS_SRC}" "${AU_BUNDLE}/Contents/Resources/Icon.icns"
         COMMENT "Copying high-quality icns to VST3 and AU bundles"
     )
+endif()
+
+# ==============================================================================
+# React UI Bundle — Windows
+# ==============================================================================
+# Il VST3 su Windows è comunque una cartella-bundle, quindi la UI va in
+# Contents/Resources/webview-ui come su macOS. Lo Standalone è un exe nudo:
+# lì la dist finisce accanto all'eseguibile. findUIDirectory() cerca entrambe.
+
+if(WIN32)
+    set(REACT_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/webview-ui/dist")
+    set(WIN_ARTEFACTS  "${CMAKE_BINARY_DIR}/WhyCremisiVSTPlugin_artefacts/$<CONFIG>")
+
+    if(EXISTS "${REACT_DIST_DIR}")
+        add_custom_command(TARGET WhyCremisiVSTPlugin POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${REACT_DIST_DIR}"
+                "${WIN_ARTEFACTS}/VST3/WhyCremisi.vst3/Contents/Resources/webview-ui"
+            COMMENT "Embedding React UI in the Windows VST3 bundle"
+        )
+
+        if(TARGET WhyCremisiVSTPlugin_Standalone)
+            add_custom_command(TARGET WhyCremisiVSTPlugin_Standalone POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${REACT_DIST_DIR}"
+                    "${WIN_ARTEFACTS}/Standalone/webview-ui"
+                COMMENT "Embedding React UI next to the Windows standalone"
+            )
+        endif()
+    else()
+        message(WARNING "webview-ui/dist non trovata — compila la UI con 'npm run build' in webview-ui/, altrimenti il plugin si aprirà vuoto.")
+    endif()
 endif()
 
 # DAW thumbnail — copied into VST3 bundle for plugin browser display (macOS + Windows)

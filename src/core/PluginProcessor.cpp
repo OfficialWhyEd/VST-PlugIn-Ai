@@ -16,15 +16,20 @@
 #include "DSPEngine.h"
 #include "../agent/PersonalityCore.h"
 #include "../agent/AgentWorkspace.h"
+#include "../debug/DebugLog.h"
 #include <nlohmann/json.hpp>
-#include <signal.h>
+
+#if ! JUCE_WINDOWS
+ #include <signal.h>
 
 // Ignore SIGPIPE: when a WebSocket client disconnects, socket write returns -1
 // instead of killing the process. Check errno == EPIPE in sendFrame.
+// Windows has no SIGPIPE: a write to a closed socket just returns SOCKET_ERROR.
 static bool sigpipeIgnored = []() {
     signal(SIGPIPE, SIG_IGN);
     return true;
 }();
+#endif
 
 //==============================================================================
 WhyCremisiProcessor::WhyCremisiProcessor()
@@ -284,7 +289,7 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     auto logToFile = [](const juce::String& msg) {
         DBG(msg);
 #ifndef NDEBUG
-        juce::File logFile("/tmp/whycremisi-debug.log");
+        juce::File logFile = whycremisi::debugLogFile();
         juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
         logFile.appendText("[" + timestamp + "] " + msg + "\n");
 #endif

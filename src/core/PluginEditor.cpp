@@ -25,14 +25,45 @@ static juce::String getMimeType (const juce::String& ext)
     return "application/octet-stream";
 }
 
+// Dove sta il bundle React, a seconda di formato e piattaforma.
+// macOS: sempre dentro il bundle (.vst3/.component/.app) in Contents/Resources.
+// Windows: currentApplicationFile è l'eseguibile dell'HOST, non il plugin — si parte
+//          dal modulo caricato (currentExecutableFile) e si risale al bundle VST3.
+static juce::File findUIDirectory()
+{
+    juce::Array<juce::File> candidates;
+
+    const auto executable = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+    const auto application = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
+
+    // Bundle macOS (VST3 / AU / Standalone .app)
+    candidates.add (application.getChildFile ("Contents/Resources/webview-ui"));
+
+    // VST3 Windows: <plugin>.vst3/Contents/x86_64-win/<plugin>.vst3 → risali a Contents
+    candidates.add (executable.getParentDirectory().getParentDirectory()
+                              .getChildFile ("Resources/webview-ui"));
+
+    // Standalone e build non impacchettate: accanto all'eseguibile
+    candidates.add (executable.getParentDirectory().getChildFile ("webview-ui"));
+    candidates.add (application.getParentDirectory().getChildFile ("webview-ui"));
+
+    for (const auto& dir : candidates)
+        if (dir.getChildFile ("index.html").existsAsFile())
+            return dir;
+
+    return {};
+}
+
 WhyCremisiBrowser::WhyCremisiBrowser()
     : juce::WebBrowserComponent (juce::WebBrowserComponent::Options{}
                                       .withKeepPageLoadedWhenBrowserIsHidden()
                                       .withNativeIntegrationEnabled()
                                       .withResourceProvider ([](const juce::String& url) -> std::optional<juce::WebBrowserComponent::Resource>
                                       {
-                                          auto distDir = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
-                                              .getChildFile ("Contents/Resources/webview-ui");
+                                          auto distDir = findUIDirectory();
+
+                                          if (distDir == juce::File{})
+                                              return std::nullopt;
 
                                           auto relativePath = url.isEmpty() ? "index.html"
                                                                              : url.trimCharactersAtStart ("/");

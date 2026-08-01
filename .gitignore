@@ -47,3 +47,8 @@ OpenClaw-VST-Wiki/
 
 # Additional build directories
 build-rel/
+build-*/
+
+# Node
+node_modules/
+webview-ui/dist/

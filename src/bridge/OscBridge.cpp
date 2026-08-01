@@ -16,6 +16,7 @@
 #include "PluginChain.h"
 #include "PluginProcessor.h"
 #include "IDawHandler.h"
+#include "../debug/DebugLog.h"
 #include "ReaperDawHandler.h"
 #include "AbletonDawHandler.h"
 #include "DawDetector.h"
@@ -2297,7 +2298,7 @@ void OscBridge::log(const juce::String& msg)
 {
     DBG("[OscBridge] " + msg);
 #ifndef NDEBUG
-    juce::File logFile("/tmp/whycremisi-debug.log");
+    juce::File logFile = whycremisi::debugLogFile();
     juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
     logFile.appendText("[" + timestamp + "] " + msg + "\n");
 #endif

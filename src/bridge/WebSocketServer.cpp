@@ -8,6 +8,7 @@
 */
 
 #include "WebSocketServer.h"
+#include "../debug/DebugLog.h"
 #include <sstream>
 #include <iomanip>
 #include <cstring>
@@ -123,7 +124,7 @@ void WebSocketServer::stop()
     {
 #ifndef NDEBUG
         {
-            juce::File logFile("/tmp/whycremisi-debug.log");
+            juce::File logFile = whycremisi::debugLogFile();
             juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
             logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
         }
@@ -176,7 +177,7 @@ void WebSocketServer::stop()
     void WebSocketServer::clientLoop(ClientInfo* client)
     {
 #ifndef NDEBUG
-        juce::File logFile("/tmp/whycremisi-debug.log");
+        juce::File logFile = whycremisi::debugLogFile();
         auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
         logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
@@ -316,14 +317,14 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
     if (!client || !client->socket)
     {
 #ifndef NDEBUG
-        juce::File logFile("/tmp/whycremisi-debug.log");
+        juce::File logFile = whycremisi::debugLogFile();
         logFile.appendText("[WS-HS] No client or socket\n");
 #endif
         return false;
     }
 
 #ifndef NDEBUG
-    juce::File logFile("/tmp/whycremisi-debug.log");
+    juce::File logFile = whycremisi::debugLogFile();
 #endif
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
