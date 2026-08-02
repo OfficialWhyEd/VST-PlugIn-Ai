@@ -216,6 +216,54 @@ void OscHandler::sendMessage(const juce::String& address, float value)
     }
 }
 
+void OscHandler::sendMessage(const juce::String& address, const std::vector<float>& values,
+                             const std::vector<bool>& intMask)
+{
+    if (!sendSocket)
+    {
+        sendSocket = std::make_unique<juce::DatagramSocket>();
+        sendSocket->setEnablePortReuse(false);
+    }
+
+    // Il type tag elenca i tipi nell'ordine degli argomenti: "if" significa
+    // primo intero, secondo float. AbletonOSC vuole l'indice della traccia
+    // come intero, quindi il tipo non e' uniforme e va composto qui.
+    juce::String typeTag;
+    juce::String logArgs;
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        const bool asInt = (i < intMask.size()) ? intMask[i] : false;
+        typeTag += asInt ? "i" : "f";
+        logArgs += (i > 0 ? " " : "");
+        logArgs += asInt ? juce::String ((int) values[i]) : juce::String (values[i], 3);
+    }
+
+    juce::MemoryBlock packet;
+    writeOscAddress(packet, address);
+    writeOscTypeTag(packet, typeTag);
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        const bool asInt = (i < intMask.size()) ? intMask[i] : false;
+        if (asInt) writeOscIntArg   (packet, (int) values[i]);
+        else       writeOscFloatArg (packet, values[i]);
+    }
+
+    int bytesSent = sendSocket->write(sendHost, sendPortNum,
+                                        packet.getData(),
+                                        static_cast<int>(packet.getSize()));
+
+    if (bytesSent > 0)
+    {
+        addToLog("[OSC] SENT: " + address + " -> " + logArgs +
+                 " (" + juce::String(bytesSent) + " bytes)");
+        messagesSent.fetch_add(1);
+    }
+    else
+    {
+        addToLog("[OSC] ERROR: Failed to send to " + sendHost + ":" + juce::String(sendPortNum));
+    }
+}
+
 void OscHandler::sendMessage(const juce::String& address, const juce::String& value)
 {
     if (!sendSocket)
@@ -360,6 +408,9 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
     const char* ptr = arguments;
     juce::var firstValue;
     bool hasValue = false;
+    // Argomenti numerici raccolti per consegnarli tutti insieme a fine
+    // parsing: separati non si capisce quale sia l'indice e quale il valore.
+    std::vector<float> numericArgs;
 
     for (int i = 0; i < typeTag.length() && ptr < arguments + argSize; i++)
     {
@@ -381,6 +432,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 addToLog("[OSC] " + address + " -> " + juce::String(value, 3));
 
                 if (!hasValue) { firstValue = value; hasValue = true; }
+                numericArgs.push_back(value);
                 if (callback) callback(address, value);
                 ptr += 4;
                 break;
@@ -397,6 +449,7 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
                 addToLog("[OSC] " + address + " -> " + juce::String(value));
 
                 if (!hasValue) { firstValue = value; hasValue = true; }
+                numericArgs.push_back(static_cast<float>(value));
                 if (callback) callback(address, static_cast<float>(value));
                 ptr += 4;
                 break;
@@ -427,6 +480,11 @@ void OscHandler::handleOscMessage(const juce::String& address, const juce::Strin
 
     if (messageCallback && hasValue)
         messageCallback(address, firstValue);
+
+    // Consegna in blocco: chi ascolta qui vede indice e valore nello stesso
+    // ordine in cui la DAW li ha mandati.
+    if (multiCallback && ! numericArgs.empty())
+        multiCallback(address, numericArgs);
 }
 
 //==============================================================================

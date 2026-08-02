@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <functional>
+#include <vector>
 
 class IDawHandler
 {
@@ -41,6 +42,14 @@ public:
     using SendOscCallback = std::function<void(const juce::String&, float)>;
     virtual void setSendCallback(SendOscCallback cb) { sendCallback = std::move(cb); }
 
+    // Invio con piu' argomenti: AbletonOSC passa l'indice della traccia
+    // come argomento, non nell'indirizzo, quindi la forma a un solo float
+    // non basta a esprimere i comandi sul mixer.
+    using SendOscMultiCallback =
+        std::function<void(const juce::String&, const std::vector<float>&, const std::vector<bool>&)>;
+    virtual void setSendMultiCallback(SendOscMultiCallback cb) { sendMultiCallback = std::move(cb); }
+
 protected:
     SendOscCallback sendCallback;
+    SendOscMultiCallback sendMultiCallback;
 };

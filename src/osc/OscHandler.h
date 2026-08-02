@@ -72,6 +72,14 @@ public:
     void sendMessage(const juce::String& address, float value);
     void sendMessage(const juce::String& address, const juce::String& value);
     void sendMessage(const juce::String& address, int value);
+
+    /** Messaggio con piu' argomenti. AbletonOSC passa l'indice della
+        traccia come primo argomento invece di metterlo nell'indirizzo,
+        quindi senza questa forma i comandi sul mixer non si possono
+        nemmeno esprimere. `intMask` dice quali argomenti sono interi. */
+    void sendMessage(const juce::String& address, const std::vector<float>& values,
+                     const std::vector<bool>& intMask = {});
+
     void setSendTarget(const juce::String& host, int sendPort);
     juce::String getSendHost() const { return sendHost; }
     int getSendPort() const { return sendPortNum; }
@@ -92,9 +100,17 @@ public:
     using OscStringCallback = std::function<void(const juce::String& address, const juce::String& value)>;
     using MessageCallback = std::function<void(const juce::String&, const juce::var&)>;
 
+    /** Tutti gli argomenti numerici di un messaggio, consegnati insieme e
+        una volta sola. Serve per AbletonOSC, che risponde con l'indice
+        della traccia come primo argomento: con la callback a valore
+        singolo indice e valore arrivano separati e indistinguibili. */
+    using OscMultiCallback = std::function<void(const juce::String& address,
+                                                const std::vector<float>& values)>;
+
     void setCallback(OscCallback cb);
     void setStringCallback(OscStringCallback cb);
     void setMessageCallback(MessageCallback cb);
+    void setMultiCallback(OscMultiCallback cb) { multiCallback = std::move(cb); }
 
     //==============================================================================
     // Logging
@@ -146,6 +162,7 @@ private:
     OscCallback callback;
     OscStringCallback stringCallback;
     MessageCallback messageCallback;
+    OscMultiCallback multiCallback;
 
     //==============================================================================
     // Logging

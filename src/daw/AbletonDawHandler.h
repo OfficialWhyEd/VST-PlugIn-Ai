@@ -26,4 +26,11 @@ public:
 
     juce::String getName() const override { return "Ableton Live"; }
     bool isAbleton() const override { return true; }
+
+private:
+    /** Invia con piu' argomenti, ripiegando sul canale a singolo valore
+        se quello multi-argomento non e' stato collegato. */
+    void sendMulti (const juce::String& address,
+                    const std::vector<float>& values,
+                    const std::vector<bool>& intMask);
 };

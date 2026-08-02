@@ -85,6 +85,12 @@ OscBridge::OscBridge(int oscReceivePort, int wsListenPort)
         onOscStringReceived(address, value);
     });
 
+    // Messaggi con piu' argomenti: e' la forma con cui AbletonOSC risponde
+    // sulle tracce, e senza questa non ne veniva letto nessuno.
+    oscHandler->setMultiCallback([this](const juce::String& address, const std::vector<float>& args) {
+        handleAbletonMultiArg(address, args);
+    });
+
     // WebSocket → OSC: set callback for incoming messages from UI
     wsServer->setMessageCallback([this](const nlohmann::json& msg) {
         handleWebSocketMessage(msg);
@@ -464,9 +470,37 @@ void OscBridge::onOscStringReceived(const juce::String& address, const juce::Str
 //==============================================================================
 // Ableton Live: handle track parameter data
 //==============================================================================
+void OscBridge::handleAbletonMultiArg(const juce::String& address, const std::vector<float>& args)
+{
+    // AbletonOSC risponde con l'indice della traccia come primo argomento:
+    //     /live/track/get/volume  [2, 0.85]
+    // Il vecchio percorso lo cercava dentro l'indirizzo, non lo trovava e
+    // scartava il messaggio, quindi nessuna risposta di Live arrivava mai.
+    if (! address.startsWith("/live/track/") || args.size() < 2)
+        return;
+
+    const int trackId = (int) args[0];
+    const float value = args[1];
+    if (trackId < 0) return;
+
+    abletonDetected = true;
+    auto& track = abletonTracks[trackId];
+
+    if (address.endsWith("/volume"))       track.volume = value;
+    else if (address.endsWith("/panning")) track.pan = value;
+    else if (address.endsWith("/mute"))    track.mute = (value > 0.5f);
+    else if (address.endsWith("/solo"))    track.solo = (value > 0.5f);
+    else return;
+
+    broadcastAbletonTrack(trackId);
+}
+
 void OscBridge::handleAbletonTrackData(const juce::String& address, float value)
 {
-    // Parse track ID from /live/track/N/... address
+    // Percorso per il vecchio LiveOSC, dove l'indice sta nell'indirizzo:
+    //     /live/track/2/get/volume  [0.85]
+    // Tenuto per chi usa ancora quel Remote Script; il formato attuale
+    // passa invece da handleAbletonMultiArg.
     juce::String remainder = address.fromFirstOccurrenceOf("/live/track/", false, true);
     int trackId = remainder.upToFirstOccurrenceOf("/", false, true).getIntValue();
     if (trackId < 1) return;
@@ -546,22 +580,25 @@ void OscBridge::discoverAbletonTracks()
 {
     if (!abletonDetected || abletonTrackCount == 0)
     {
-        // Send a query to learn the track count
-        sendOscToDaw("/live/song/get/num_tracks", 0.0f);
+        // La richiesta del numero di tracce non prende argomenti.
+        oscHandler->sendMessage("/live/song/get/num_tracks", std::vector<float>{}, {});
         return;
     }
 
     log("[Ableton] Discovering " + juce::String(abletonTrackCount) + " tracks...");
 
-    // Enumerate all tracks
-    for (int i = 1; i <= abletonTrackCount; ++i)
+    // In AbletonOSC l'indice della traccia e' un argomento del messaggio,
+    // non parte dell'indirizzo, e la numerazione parte da zero. Con la
+    // forma precedente (/live/track/1/get/name) Live non rispondeva.
+    for (int i = 0; i < abletonTrackCount; ++i)
     {
-        juce::String prefix = "/live/track/" + juce::String(i);
-        sendOscToDaw(prefix + "/get/name", 0.0f);
-        sendOscToDaw(prefix + "/get/volume", 0.0f);
-        sendOscToDaw(prefix + "/get/panning", 0.0f);
-        sendOscToDaw(prefix + "/get/mute", 0.0f);
-        sendOscToDaw(prefix + "/get/solo", 0.0f);
+        const std::vector<float> arg { (float) i };
+        const std::vector<bool>  asInt { true };
+        oscHandler->sendMessage("/live/track/get/name",    arg, asInt);
+        oscHandler->sendMessage("/live/track/get/volume",  arg, asInt);
+        oscHandler->sendMessage("/live/track/get/panning", arg, asInt);
+        oscHandler->sendMessage("/live/track/get/mute",    arg, asInt);
+        oscHandler->sendMessage("/live/track/get/solo",    arg, asInt);
     }
 
     // Broadcast list of discovered track IDs to UI
@@ -571,7 +608,9 @@ void OscBridge::discoverAbletonTracks()
     msg["payload"]["count"] = abletonTrackCount;
     msg["payload"]["source"] = "ableton";
     nlohmann::json ids = nlohmann::json::array();
-    for (int i = 1; i <= abletonTrackCount; ++i)
+    // Stessa numerazione da zero usata nelle richieste qui sopra: se la UI
+    // ricevesse indici da 1 rimanderebbe comandi sulla traccia sbagliata.
+    for (int i = 0; i < abletonTrackCount; ++i)
         ids.push_back(i);
     msg["payload"]["trackIds"] = ids;
     if (wsServer)
@@ -613,6 +652,14 @@ void OscBridge::ensureDawHandler(DawType type)
         // Wire up the send callback so handler can emit OSC
         dawHandler->setSendCallback([this](const juce::String& addr, float val) {
             sendOscToDaw(addr, val);
+        });
+
+        // Canale multi-argomento: senza questo Ableton non riceve i comandi
+        // sul mixer, perche' li' l'indice della traccia e' un argomento.
+        dawHandler->setSendMultiCallback([this](const juce::String& addr,
+                                                const std::vector<float>& vals,
+                                                const std::vector<bool>& intMask) {
+            oscHandler->sendMessage(addr, vals, intMask);
         });
 
         log("[DAW] Handler created: " + dawHandler->getName());
@@ -1725,6 +1772,52 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["status"] = "ok";
         rp["masked"] = true;
         rp["connected"] = ! token.empty();
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "daw.preset")
+    {
+        // Le porte OSC non sono le stesse fra le DAW, e sbagliarle e' il
+        // modo piu' comune di ritrovarsi con un plugin che "non fa niente"
+        // senza alcun messaggio d'errore. Qui si sceglie la DAW e le porte
+        // si impostano da sole.
+        if (!payload.contains("value") || !payload["value"].is_string()) return;
+        const juce::String preset (payload["value"].get<std::string>().data());
+
+        int sendPort = 0, receivePort = 0;
+        if (preset == "ableton")
+        {
+            // AbletonOSC ascolta sulla 11000 e risponde sulla 11001.
+            sendPort = 11000; receivePort = 11001;
+        }
+        else if (preset == "reaper")
+        {
+            // In Reaper le porte si scelgono in Preferenze; queste sono
+            // quelle suggerite nella guida del progetto.
+            sendPort = 8000; receivePort = 9000;
+        }
+        else
+        {
+            nlohmann::json err;
+            err["key"] = "daw.preset";
+            err["status"] = "error";
+            err["message"] = "Preset ammessi: ableton, reaper";
+            sendConfigResponse(err);
+            return;
+        }
+
+        setDawTarget ("127.0.0.1", sendPort);
+        log("[CONFIG] Preset " + preset + ": invio su " + juce::String(sendPort)
+            + ", ascolto su " + juce::String(receivePort));
+
+        nlohmann::json rp;
+        rp["key"] = "daw.preset";
+        rp["value"] = preset.toStdString();
+        rp["status"] = "ok";
+        rp["sendPort"] = sendPort;
+        rp["receivePort"] = receivePort;
+        // La porta di ascolto si applica al riavvio del listener: la UI
+        // deve dirlo, altrimenti sembra che il preset non abbia funzionato.
+        rp["receivePortNeedsRestart"] = (receivePort != oscPort);
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.detectSubscription")

@@ -191,6 +191,9 @@ private:
     bool abletonDetected = false;
 
     void handleAbletonTrackData(const juce::String& address, float value);
+    /** Risposte di AbletonOSC, dove l'indice della traccia e' il primo
+        argomento del messaggio invece che parte dell'indirizzo. */
+    void handleAbletonMultiArg(const juce::String& address, const std::vector<float>& args);
     void handleAbletonTrackString(const juce::String& address, const juce::String& value);
     void discoverAbletonTracks();
     void broadcastAbletonTrack(int trackId);
