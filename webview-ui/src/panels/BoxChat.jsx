@@ -65,7 +65,7 @@ export default function BoxChat({ boxType, meterL, meterR, lufs, peak, transport
 
     if (type === 'advisory') return <AdvisoryBox key="advisory" suggestion={suggestion} personality={personality} onDawCmd={onDawCmd} onAnalyzeFurther={onAnalyzeFurther} />
     if (type === 'vectorscope') return <VectorscopeBox key="vec" correlation={correlation} scopePoints={scopePoints} onDawCmd={onDawCmd} {...wrapperProps} />
-    if (type === 'stereo') return <StereoscopeBox key="stereo" meterL={meterL} meterR={meterR} onDawCmd={onDawCmd} {...wrapperProps} />
+    if (type === 'stereo') return <StereoscopeBox key="stereo" meterL={meterL} meterR={meterR} correlation={correlation} scopePoints={scopePoints} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'loudness') return <LoudnessBox key="loud" lufs={lufs} lufsShort={lufsShort} peak={peak} rms={rms} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'clipping') return <ClippingBox key="clip" peak={peak} onDawCmd={onDawCmd} clippingCount={clippingCount} {...wrapperProps} />
     if (type === 'eq') return <EqBox key="eq" spectrum={spectrum} {...wrapperProps} />
@@ -74,7 +74,7 @@ export default function BoxChat({ boxType, meterL, meterR, lufs, peak, transport
     if (type === 'knob') return <KnobBox key="knob" meterL={meterL} meterR={meterR} {...wrapperProps} />
     if (type === 'transport') return <TransportBox key="trans" transport={transport} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'compressor') return <CompressorBox key="comp" correlation={correlation} gainReduction={gainReduction} onDawCmd={onDawCmd} {...wrapperProps} />
-    return <MetricsBox key="metrics" meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} {...wrapperProps} />
+    return <MetricsBox key="metrics" meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} rms={rms} spectrum={spectrum} sampleRate={pluginStats?.sampleRate} {...wrapperProps} />
   }
 
   return (
