@@ -15,7 +15,8 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 - [ ] **Provare i pannelli con audio che scorre** — le misure ora sono vere e le firme mid/side sono state verificate su segnali noti, ma il percorso completo fino allo schermo dentro una DAW non è ancora stato visto.
 - [ ] **Immagine stereo (`StereoscopeBox`)** — è l'ultimo pannello ancora ricavato dai soli meter L/R; ora che i punti del vectorscope arrivano, può usare quelli.
 - [ ] **Login Claude con un click** — oggi il token di un abbonamento si rileva da `ANTHROPIC_AUTH_TOKEN` o si incolla a mano. Il flusso OAuth completo dentro il plugin (browser + PKCE) è un lavoro a sé.
-- [ ] **Collegare la catena DSP alla UI e all'AI** — EQ, compressore e limiter esistono e funzionano, ma non è raggiungibile nulla: `DSPEngine::setBypass()` non viene chiamato da nessuna parte e nel bridge OSC non c'è un solo comando che imposti soglia, ratio o bande. Il `CompressorBox` della UI manda comandi che non arrivano al DSP interno. Finché non sono cablati, i moduli restano bypassati.
+- [ ] **Provare in Ableton il canale di comando verso il DSP** — il cablaggio c'è e il percorso è verificato staticamente, ma il comportamento a runtime non è confermato: `pedalboard` crea più istanze del plugin e non permette di raggiungere quella che processa l'audio. Vedi `ABLETON.md`.
+- [x] ~~**Collegare la catena DSP alla UI e all'AI**~~ — EQ, compressore e limiter esistono e funzionano, ma non è raggiungibile nulla: `DSPEngine::setBypass()` non viene chiamato da nessuna parte e nel bridge OSC non c'è un solo comando che imposti soglia, ratio o bande. Il `CompressorBox` della UI manda comandi che non arrivano al DSP interno. Finché non sono cablati, i moduli restano bypassati.
 
 ## Media priorità
 
