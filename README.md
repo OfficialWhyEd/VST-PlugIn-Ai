@@ -480,8 +480,8 @@ The VST3 SDK extension architecture (note expression, MIDI 2.0, MPE) is supporte
 **Prerequisites:** CMake ≥ 3.20 · Node ≥ 20 · [JUCE 8](https://juce.com/get-juce/) · Xcode Command Line Tools (macOS) or Visual Studio Build Tools (Windows)
 
 ```bash
-git clone https://github.com/OfficialWhyEd/VST-PlugIn-Ai
-cd VST-PlugIn-Ai
+git clone https://github.com/OfficialWhyEd/WhyCremisi
+cd WhyCremisi
 
 # Build the React UI first — it gets embedded into the plugin bundle
 cd webview-ui && npm install && npm run build && cd ..

@@ -33,8 +33,8 @@ setx JUCE_ROOT "C:\SDKs\JUCE"
 
 ### Step 1: Clone repository
 ```cmd
-git clone https://github.com/OfficialWhyEd/VST-PlugIn-Ai.git
-cd VST-PlugIn-Ai
+git clone https://github.com/OfficialWhyEd/WhyCremisi.git
+cd WhyCremisi
 ```
 
 ### Step 2: Pull ultime modifiche
@@ -188,7 +188,7 @@ Installa Visual Studio 2022 con "Desktop development with C++".
 **Se ci sono problemi:**
 - Aura (AI di Carlo): chiedi a Carlo
 - Documentazione: `Documentazione/` nel repo
-- GitHub Issues: https://github.com/OfficialWhyEd/VST-PlugIn-Ai/issues
+- GitHub Issues: https://github.com/OfficialWhyEd/WhyCremisi/issues
 
 ---
 

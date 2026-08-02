@@ -12,7 +12,6 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 - [ ] **Ricompilare su Mac dopo il merge** — il ramo unificato è stato verificato solo su Windows. Su macOS vanno riprovati il blocco `if(APPLE)` del `CMakeLists.txt` e il formato AU.
 - [ ] **Allineare la versione di JUCE** — su Mac è stato usato JUCE 8.0.12, su Windows c'è 8.0.4. Le API della WebView differiscono fra le due.
 - [ ] **Testare il feedback OSC dal DAW al plugin** — la direzione plugin → DAW funziona, l'inversa non è mai stata verificata davvero.
-- [ ] **Decidere il nome del repository** — il README rimanda otto volte a `OfficialWhyEd/WhyCremisi` e a `officialwhyed.github.io/WhyCremisi`, ma il repo si chiama `VST-PlugIn-Ai`: quei link sono rotti. O si rinomina il repo, o si correggono i link.
 
 ## Media priorità
 
@@ -36,3 +35,4 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 - [x] **Regole del progetto riscritte** (01/08/2026) — rimosso tutto l'impianto a tre persone; vedi `Documentazione/WORKFLOW.md`.
 - [x] **Rami riunificati** (01/08/2026) — `master` e `heartbroken-claude` riuniti; nel merge sono emersi il `getName()` spezzato che impediva a `master` di compilare, l'escaping JavaScript mai eseguito e il flag `/utf-8` mancante per MSVC.
 - [x] **Documentazione separata dal sito** (01/08/2026) — `docs/` è solo la landing page GitHub Pages, la documentazione sta in `Documentazione/`.
+- [x] **Riferimenti al repository corretti** (01/08/2026) — il repo è stato rinominato in `OfficialWhyEd/WhyCremisi`: aggiornati i comandi di clone e rimosso il remote `carlo`, che puntava a un repository non più esistente.
