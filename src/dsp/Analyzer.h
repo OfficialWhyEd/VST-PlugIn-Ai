@@ -19,7 +19,17 @@ public:
         float truePeak = 0.0f;                  // true peak in dBTP
         float rms = 0.0f;                       // raw RMS in dB
         int clippingCount = 0;                  // clipping event count
+
+        // Nuvola di punti per il vectorscope, gia' ruotata di 45 gradi:
+        // x = side (L-R), y = mid (L+R), entrambi in -1..1. Interleaved
+        // x,y,x,y... Sono i campioni veri decimati, non una figura
+        // ricostruita a partire dalla correlazione.
+        std::vector<float> scopePoints;
     };
+
+    // Quanti punti tenere: abbastanza per leggere la figura, pochi
+    // abbastanza da non appesantire il WebSocket a ogni invio.
+    static constexpr int scopePointCount = 256;
 
     Analyzer();
     ~Analyzer();
@@ -78,8 +88,15 @@ private:
     std::atomic<int> clipCount{0};
     float clipThresholdDb = -0.5f;
 
+    // Vectorscope: raccolta a rotazione dei campioni stereo decimati.
+    std::vector<float> scopeBuffer;   // interleaved x,y
+    int scopeWritePos = 0;
+    int scopeDecimation = 8;          // 1 campione ogni N, ricalcolato in prepare()
+    int scopeDecimationCounter = 0;
+
     void applyWindow(float* data, int size);
     void updateLoudness(const juce::AudioBuffer<float>& buffer);
     void detectTruePeak(const juce::AudioBuffer<float>& buffer);
+    void collectScopePoints(const juce::AudioBuffer<float>& buffer);
     void initKWeightingFilters();
 };

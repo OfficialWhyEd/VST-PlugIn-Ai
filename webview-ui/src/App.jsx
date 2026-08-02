@@ -142,6 +142,12 @@ export default function App() {
   const [spectrum, setSpectrum] = useState([])
   const [correlation, setCorrelation] = useState(0)
   const [clippingCount, setClipping] = useState(0)
+  // Misure vere dall'analyzer, non più stimate lato interfaccia.
+  const [rms, setRms] = useState(-60)
+  const [lufsShort, setLufsShort] = useState(-60)
+  // Nuvola di punti stereo del vectorscope, interleaved x,y.
+  const [scopePoints, setScopePoints] = useState([])
+  const [gainReduction, setGainReduction] = useState(0)
   const [cpuUsage, setCpuUsage] = useState({ cpuPercent: 0, peakTimeUs: 0 })
   // Token spesi dall'inizio della sessione, aggiornati a ogni risposta.
   const [tokenUsage, setTokenUsage] = useState({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, total: 0 })
@@ -399,6 +405,13 @@ export default function App() {
       if (payload.correlation !== undefined) setCorrelation(payload.correlation)
       if (payload.truePeak !== undefined) setPeak(payload.truePeak)
       if (payload.clippingCount !== undefined) setClipping(payload.clippingCount)
+      // Misure che il plugin calcolava già ma che la UI buttava via:
+      // senza queste i pannelli mostravano valori ricavati per stima.
+      if (payload.rms !== undefined) setRms(payload.rms)
+      if (payload.loudnessShortTerm !== undefined) setLufsShort(payload.loudnessShortTerm)
+      if (payload.loudnessIntegrated !== undefined) setLufs(payload.loudnessIntegrated)
+      if (payload.scope) setScopePoints(payload.scope)
+      if (payload.gainReduction !== undefined) setGainReduction(payload.gainReduction)
     })
 
     // CPU usage
@@ -1406,7 +1419,7 @@ export default function App() {
                             />
                           )}
                         </p>
-                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} />}
+                        {msg.telemetry && !msg.streaming && <BoxChat boxType={msg.boxType||'metrics'} meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} transport={transport} pluginStats={pluginStats} gainDb={gainDb} driveVal={driveVal} correlation={correlation} spectrum={spectrum} onDawCmd={dawCmd} personality={personality} onAnalyzeFurther={analyzeFurther} suggestion={currentSuggestion} layout={boxLayout} clippingCount={clippingCount} cpuUsage={cpuUsage} rms={rms} lufsShort={lufsShort} scopePoints={scopePoints} gainReduction={gainReduction} />}
                       </div>
                     </motion.div>
                   )

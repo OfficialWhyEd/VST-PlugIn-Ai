@@ -3,9 +3,23 @@ import { motion } from 'framer-motion'
 import MetricBar from './shared/MetricBar'
 import BoxWrapper from './shared/BoxWrapper'
 
-export default function VectorscopeBox({ correlation, onDawCmd, ...rest }) {
+export default function VectorscopeBox({ correlation, scopePoints = [], onDawCmd, ...rest }) {
   const [midSide, setMidSide] = useState(false)
   const [phaseInvert, setPhaseInvert] = useState(false)
+
+  // Punti veri dall'analyzer: coppie x,y già ruotate di 45°, dove x è il
+  // side (L-R) e y il mid (L+R). Prima qui c'era una figura disegnata con
+  // Math.sin(Date.now()), che si muoveva anche a silenzio assoluto.
+  const hasSignal = scopePoints.length >= 2
+  const path = []
+  for (let i = 0; i + 1 < scopePoints.length; i += 2) {
+    // y invertito: nell'SVG cresce verso il basso, il mid deve salire.
+    path.push(`${i === 0 ? 'M' : 'L'}${scopePoints[i].toFixed(3)},${(-scopePoints[i + 1]).toFixed(3)}`)
+  }
+
+  // Verde quando i canali sono in fase, rosso quando si cancellano in mono.
+  const scopeColor = correlation < 0.3 ? '#DC143C' : correlation < 0.6 ? '#FFB000' : '#AA44FF'
+
   return (
     <BoxWrapper label="Vectorscope" color="#AA44FF" icon="donut_small" {...rest}>
       <div className="flex gap-3">
@@ -15,22 +29,23 @@ export default function VectorscopeBox({ correlation, onDawCmd, ...rest }) {
             <circle cx="0" cy="0" r="0.5" fill="none" stroke="#1a1a1a" strokeWidth="0.01" />
             <line x1="-1" y1="0" x2="1" y2="0" stroke="#1a1a1a" strokeWidth="0.01" />
             <line x1="0" y1="-1" x2="0" y2="1" stroke="#1a1a1a" strokeWidth="0.01" />
-            {Array.from({ length: 80 }, (_, i) => {
-              const a = (i / 80) * Math.PI * 2
-              const r = 0.3 + Math.sin(a * 3 + Date.now() * 0.002) * 0.3 + correlation * 0.3
-              const x = Math.cos(a) * r, y = Math.sin(a) * r
-              const hue = 280 + (1 - correlation) * 60
-              return <circle key={i} cx={x} cy={y} r="0.03" fill={`hsl(${hue}, 90%, 60%)`} opacity={0.7} />
-            })}
-            {Array.from({ length: 40 }, (_, i) => {
-              const a = (i / 40) * Math.PI * 2 + Date.now() * 0.001
-              const r = 0.1 + Math.abs(Math.sin(a * 2)) * 0.4
-              const x = Math.cos(a) * r, y = Math.sin(a) * r
-              return <circle key={'t' + i} cx={x} cy={y} r="0.02" fill="#00E5FF" opacity={0.4} />
-            })}
+            {/* Le diagonali marcano i due casi limite: tutto su L o tutto su R */}
+            <line x1="-0.85" y1="-0.85" x2="0.85" y2="0.85" stroke="#151515" strokeWidth="0.008" />
+            <line x1="-0.85" y1="0.85" x2="0.85" y2="-0.85" stroke="#151515" strokeWidth="0.008" />
+
+            {hasSignal && (
+              <path
+                d={path.join(' ')}
+                fill="none"
+                stroke={scopeColor}
+                strokeWidth="0.012"
+                strokeLinejoin="round"
+                opacity="0.85"
+              />
+            )}
           </svg>
           <div className="absolute bottom-0 left-0 right-0 text-center text-[8px] font-mono text-[#666]">
-            &phi; = {correlation.toFixed(3)}
+            {hasSignal ? <>&phi; = {correlation.toFixed(3)}</> : 'nessun segnale'}
           </div>
         </div>
         <div className="flex-1 space-y-1.5 min-w-0">

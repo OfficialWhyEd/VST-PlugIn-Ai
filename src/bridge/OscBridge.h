@@ -134,6 +134,12 @@ public:
     /** Called from processBlock to update analyzer data (thread-safe) */
     void updateAnalyzer(float correlation, float momentaryLoudness, float shortTermLoudness, float integratedLoudness, float truePeak, const std::vector<float>& spectrum, int clippingCount);
 
+    /** RMS reale e nuvola di punti del vectorscope, dal processBlock. */
+    void updateScope(float rmsDb, const std::vector<float>& scopePoints);
+
+    /** Riduzione di guadagno applicata dal compressore, in dB. */
+    void updateGainReduction(float gainReductionDb) { lastGainReduction.store(gainReductionDb); }
+
     /** Called from processBlock to update meter levels (thread-safe) */
     void updateMeter(float leftDb, float rightDb)
     {
@@ -247,7 +253,10 @@ private:
     std::atomic<float> lastIntegratedLoudness { -96.0f };
     std::atomic<float> lastTruePeak { -96.0f };
     std::atomic<int> lastClippingCount { 0 };
+    std::atomic<float> lastRms { -96.0f };
+    std::atomic<float> lastGainReduction { 0.0f };
     std::vector<float> lastSpectrum;
+    std::vector<float> lastScopePoints;
     juce::CriticalSection spectrumLock;
 
     // CPU usage (set from processBlock via setCpuUsage, broadcast from timer)

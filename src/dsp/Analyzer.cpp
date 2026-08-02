@@ -52,6 +52,16 @@ void Analyzer::prepare(double sr, int)
     currentData.phases.resize(fftSize / 2, 0.0f);
     smoothedMag.resize(fftSize / 2, 0.0f);
 
+    // Vectorscope: la decimazione e' scelta perche' i punti raccolti
+    // coprano all'incirca 50 ms di audio, che e' una finestra abbastanza
+    // corta da seguire il movimento e abbastanza lunga da disegnare una
+    // figura leggibile.
+    scopeBuffer.assign (scopePointCount * 2, 0.0f);
+    scopeWritePos = 0;
+    scopeDecimationCounter = 0;
+    scopeDecimation = juce::jmax (1, static_cast<int> ((sampleRate * 0.05) / scopePointCount));
+    currentData.scopePoints.assign (scopePointCount * 2, 0.0f);
+
     // LUFS window: 400ms momentary
     momentaryWindow = static_cast<int>(sampleRate * 0.4);
     momentarySumSq = 0.0;
@@ -77,6 +87,37 @@ void Analyzer::prepare(double sr, int)
     newData = false;
 }
 
+void Analyzer::collectScopePoints (const juce::AudioBuffer<float>& buffer)
+{
+    if (scopeBuffer.empty()) return;
+
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+    if (numSamples <= 0 || numChannels <= 0) return;
+
+    const float* left  = buffer.getReadPointer (0);
+    const float* right = (numChannels > 1) ? buffer.getReadPointer (1) : left;
+
+    for (int s = 0; s < numSamples; ++s)
+    {
+        if (++scopeDecimationCounter < scopeDecimation)
+            continue;
+        scopeDecimationCounter = 0;
+
+        // Rotazione di 45 gradi: e' quello che distingue un vectorscope da
+        // un semplice grafico L contro R. Il fattore 0.7071 (1/sqrt2) tiene
+        // i valori dentro -1..1 invece di farli arrivare a +-2.
+        const float l = left[s];
+        const float r = right[s];
+        const float side = (l - r) * 0.70710678f;
+        const float mid  = (l + r) * 0.70710678f;
+
+        scopeBuffer[scopeWritePos * 2]     = juce::jlimit (-1.0f, 1.0f, side);
+        scopeBuffer[scopeWritePos * 2 + 1] = juce::jlimit (-1.0f, 1.0f, mid);
+        scopeWritePos = (scopeWritePos + 1) % scopePointCount;
+    }
+}
+
 void Analyzer::process(const juce::AudioBuffer<float>& buffer)
 {
     int numSamples = buffer.getNumSamples();
@@ -85,6 +126,7 @@ void Analyzer::process(const juce::AudioBuffer<float>& buffer)
     // Update loudness and true peak for this buffer
     updateLoudness(buffer);
     detectTruePeak(buffer);
+    collectScopePoints(buffer);
 
     for (int s = 0; s < numSamples; ++s)
     {
@@ -133,6 +175,19 @@ void Analyzer::process(const juce::AudioBuffer<float>& buffer)
                 currentData.phases[i] = (numChannels > 1)
                     ? std::atan2(fftBuffer[1][i * 2 + 1], fftBuffer[1][i * 2])
                     : std::atan2(fftBuffer[0][i * 2 + 1], fftBuffer[0][i * 2]);
+            }
+
+            // Punti del vectorscope: si copiano riordinandoli dal piu'
+            // vecchio al piu' recente, altrimenti la figura risulterebbe
+            // spezzata nel punto in cui il buffer circolare si richiude.
+            if (! scopeBuffer.empty())
+            {
+                for (int i = 0; i < scopePointCount; ++i)
+                {
+                    const int src = (scopeWritePos + i) % scopePointCount;
+                    currentData.scopePoints[i * 2]     = scopeBuffer[src * 2];
+                    currentData.scopePoints[i * 2 + 1] = scopeBuffer[src * 2 + 1];
+                }
             }
 
             fifoIndex = 0;

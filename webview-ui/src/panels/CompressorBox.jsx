@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import BoxWrapper from './shared/BoxWrapper'
 
-export default function CompressorBox({ correlation, onDawCmd, ...rest }) {
+export default function CompressorBox({ correlation, gainReduction = 0, onDawCmd, ...rest }) {
   const [compThresh, setCompThresh] = useState(-18)
   const [compRatio, setCompRatio] = useState(4)
 
@@ -31,8 +31,11 @@ export default function CompressorBox({ correlation, onDawCmd, ...rest }) {
             />
           </div>
           <div className="flex flex-col justify-center items-center">
+            {/* Riduzione vera riportata dal compressore. Prima veniva
+                ricavata dalla correlazione di fase, che non ha alcun
+                rapporto con quanto il compressore stia comprimendo. */}
             <div className="text-[10px] text-[#00FFaa] font-bold font-mono">
-              {Math.max(0, (Math.abs(correlation) * 2 - 1) * compThresh * -0.1).toFixed(1)} dB
+              {gainReduction > 0.05 ? `-${gainReduction.toFixed(1)} dB` : '0.0 dB'}
             </div>
             <div className="text-[8px] text-[#888] uppercase tracking-wider">Gain Red</div>
           </div>

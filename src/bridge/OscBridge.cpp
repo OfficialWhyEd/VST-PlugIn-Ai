@@ -199,6 +199,8 @@ void OscBridge::timerCallback()
         ana["payload"]["loudnessIntegrated"] = integrated;
         ana["payload"]["truePeak"] = truePeak;
         ana["payload"]["clippingCount"] = clipCount;
+        ana["payload"]["rms"] = lastRms.load();
+        ana["payload"]["gainReduction"] = lastGainReduction.load();
 
         // Include device stats
         double bufSize = static_cast<double>(lastBufferSize.load());
@@ -217,6 +219,13 @@ void OscBridge::timerCallback()
             for (int i = 0; i < numBins; ++i)
                 specArr.push_back(lastSpectrum[i]);
             ana["payload"]["spectrum"] = specArr;
+
+            // Punti del vectorscope, arrotondati a tre decimali: oltre non
+            // si vedrebbe la differenza a schermo e il messaggio pesa meno.
+            nlohmann::json scopeArr = nlohmann::json::array();
+            for (float v : lastScopePoints)
+                scopeArr.push_back (std::round (v * 1000.0f) / 1000.0f);
+            ana["payload"]["scope"] = scopeArr;
         }
 
         wsServer->broadcast(ana);
@@ -1931,6 +1940,13 @@ void OscBridge::updateAnalyzer(float correlation, float momentaryLoudness, float
     lastClippingCount.store(clippingCount);
     const juce::ScopedLock sl(spectrumLock);
     lastSpectrum = spectrum;
+}
+
+void OscBridge::updateScope(float rmsDb, const std::vector<float>& scopePoints)
+{
+    lastRms.store(rmsDb);
+    const juce::ScopedLock sl(spectrumLock);
+    lastScopePoints = scopePoints;
 }
 
 void OscBridge::broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data)

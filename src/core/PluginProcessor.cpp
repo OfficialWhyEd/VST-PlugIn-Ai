@@ -436,6 +436,9 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
             std::vector<float> spectrum = data.magnitudes;
             oscBridge->updateAnalyzer(data.corrMono, data.momentaryLoudness, data.shortTermLoudness,
                                       data.integratedLoudness, data.truePeak, spectrum, data.clippingCount);
+            oscBridge->updateScope(data.rms, data.scopePoints);
+            if (dspEngine->compressor)
+                oscBridge->updateGainReduction(dspEngine->compressor->getCurrentReduction());
             dspAnalyzer->clearNewData();
         }
     }

@@ -29,7 +29,7 @@ const boxComponents = {
 
 const interactiveTypes = new Set(['slider', 'knob', 'compressor', 'clipping', 'vectorscope'])
 
-export default function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther, suggestion, layout, forceVisible, clippingCount, cpuUsage }) {
+export default function BoxChat({ boxType, meterL, meterR, lufs, peak, transport, pluginStats, gainDb, driveVal, correlation, spectrum, onDawCmd, personality, onAnalyzeFurther, suggestion, layout, forceVisible, clippingCount, cpuUsage, rms, lufsShort, scopePoints, gainReduction }) {
   const types = Array.isArray(boxType) ? boxType : [boxType || 'metrics']
   const [hidden, setHidden] = useState(new Set())
   const [minimized, setMinimized] = useState(new Set())
@@ -64,16 +64,16 @@ export default function BoxChat({ boxType, meterL, meterR, lufs, peak, transport
     const wrapperProps = { ...passMinimize, ...passClose }
 
     if (type === 'advisory') return <AdvisoryBox key="advisory" suggestion={suggestion} personality={personality} onDawCmd={onDawCmd} onAnalyzeFurther={onAnalyzeFurther} />
-    if (type === 'vectorscope') return <VectorscopeBox key="vec" correlation={correlation} onDawCmd={onDawCmd} {...wrapperProps} />
+    if (type === 'vectorscope') return <VectorscopeBox key="vec" correlation={correlation} scopePoints={scopePoints} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'stereo') return <StereoscopeBox key="stereo" meterL={meterL} meterR={meterR} onDawCmd={onDawCmd} {...wrapperProps} />
-    if (type === 'loudness') return <LoudnessBox key="loud" lufs={lufs} peak={peak} meterL={meterL} meterR={meterR} onDawCmd={onDawCmd} {...wrapperProps} />
+    if (type === 'loudness') return <LoudnessBox key="loud" lufs={lufs} lufsShort={lufsShort} peak={peak} rms={rms} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'clipping') return <ClippingBox key="clip" peak={peak} onDawCmd={onDawCmd} clippingCount={clippingCount} {...wrapperProps} />
     if (type === 'eq') return <EqBox key="eq" spectrum={spectrum} {...wrapperProps} />
     if (type === 'spectral') return <SpectralBox key="spec" spectrum={spectrum} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'slider') return <SliderBox key="slider" gainDb={gainDb} driveVal={driveVal} onDawCmd={onDawCmd} {...wrapperProps} />
     if (type === 'knob') return <KnobBox key="knob" meterL={meterL} meterR={meterR} {...wrapperProps} />
     if (type === 'transport') return <TransportBox key="trans" transport={transport} onDawCmd={onDawCmd} {...wrapperProps} />
-    if (type === 'compressor') return <CompressorBox key="comp" correlation={correlation} onDawCmd={onDawCmd} {...wrapperProps} />
+    if (type === 'compressor') return <CompressorBox key="comp" correlation={correlation} gainReduction={gainReduction} onDawCmd={onDawCmd} {...wrapperProps} />
     return <MetricsBox key="metrics" meterL={meterL} meterR={meterR} lufs={lufs} peak={peak} {...wrapperProps} />
   }
 
