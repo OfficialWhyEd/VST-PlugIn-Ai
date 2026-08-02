@@ -58,6 +58,14 @@ Ora EQ, compressore e limiter partono bypassati; l'analyzer resta attivo perché
 
 Verifica automatica: con bypass del DAW il delta è 0,00 dB, nessun NaN in uscita, nessun crash su blocchi consecutivi, 16 parametri esposti correttamente.
 
+### La UI React è stata vista girare su Windows, per la prima volta
+
+Avviando lo standalone la finestra si apriva ma mostrava *"L'esplorazione della pagina Web è stata annullata"*: il messaggio di **Internet Explorer**. Su Windows il backend di default di JUCE è ancora IE, e attivare WebView2 nel `CMakeLists.txt` lo rende disponibile ma non lo seleziona — va chiesto esplicitamente con `Backend::webview2`. Il codice passava `defaultBackend`, corretto su macOS (WebKit), fatale su Windows.
+
+Corretto quello, la UI si carica: 6 processi WebView2 attivi e la schermata di setup "Neural Link" con la scelta del provider AI e del modello.
+
+Aggiunta anche la user data folder di WebView2 sotto `%APPDATA%\WhyCremisi\WebView2`: di default WebView2 la crea accanto all'eseguibile, e una volta installato il VST3 in `Program Files` fallirebbe in silenzio.
+
 ### Documentazione separata dal sito
 
 Il merge aveva fatto finire nella stessa cartella `docs/` sia la landing page GitHub Pages sia la documentazione tecnica. Ora `docs/` contiene solo il sito, la documentazione sta in `Documentazione/`.

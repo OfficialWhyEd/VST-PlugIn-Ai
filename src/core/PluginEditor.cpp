@@ -54,6 +54,16 @@ static juce::File findUIDirectory()
     return {};
 }
 
+// Su Windows il backend di default di JUCE e' ancora Internet Explorer, che non
+// puo' eseguire la UI React: va chiesto esplicitamente WebView2 (Chromium).
+// Altrove il default e' gia' quello giusto: WebKit su macOS, gtk-webkit2 su Linux.
+static constexpr auto preferredBackend =
+   #if JUCE_WINDOWS
+    juce::WebBrowserComponent::Options::Backend::webview2;
+   #else
+    juce::WebBrowserComponent::Options::Backend::defaultBackend;
+   #endif
+
 WhyCremisiBrowser::WhyCremisiBrowser()
     : juce::WebBrowserComponent (juce::WebBrowserComponent::Options{}
                                       .withKeepPageLoadedWhenBrowserIsHidden()
@@ -87,7 +97,18 @@ WhyCremisiBrowser::WhyCremisiBrowser()
                                           res.mimeType = mime;
                                           return res;
                                       })
-                                      .withBackend (juce::WebBrowserComponent::Options::Backend::defaultBackend))
+                                      .withBackend (preferredBackend)
+                                     #if JUCE_WINDOWS
+                                      // WebView2 crea la sua cartella dati accanto all'eseguibile.
+                                      // Una volta installato in Program Files quella cartella non e'
+                                      // scrivibile e la WebView fallisce senza dire niente, quindi la
+                                      // spostiamo dove l'utente puo' scrivere.
+                                      .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2{}
+                                          .withUserDataFolder (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                                                                          .getChildFile ("WhyCremisi")
+                                                                          .getChildFile ("WebView2")))
+                                     #endif
+                                      )
 {}
 
 bool WhyCremisiBrowser::pageAboutToLoad(const juce::String& url)
