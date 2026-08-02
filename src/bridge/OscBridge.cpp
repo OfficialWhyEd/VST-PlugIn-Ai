@@ -1621,7 +1621,13 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 else if (provider == "openai")
                     cfg.provider = AiEngine::Provider::OpenAI;
                 else if (provider == "openrouter")
+                {
                     cfg.provider = AiEngine::Provider::OpenRouter;
+                    // Chi sceglie OpenRouter di solito cerca l'opzione senza
+                    // costi: si parte da un modello gratuito.
+                    if (cfg.model.isEmpty() || ! cfg.model.contains ("/"))
+                        cfg.model = OpenRouterProvider::freeModels()[0];
+                }
                 else if (provider == "groq")
                     cfg.provider = AiEngine::Provider::Groq;
             });

@@ -143,6 +143,8 @@ export default function App() {
   const [correlation, setCorrelation] = useState(0)
   const [clippingCount, setClipping] = useState(0)
   const [cpuUsage, setCpuUsage] = useState({ cpuPercent: 0, peakTimeUs: 0 })
+  // Token spesi dall'inizio della sessione, aggiornati a ogni risposta.
+  const [tokenUsage, setTokenUsage] = useState({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0, total: 0 })
 
   // ── MIDI Learn ─────────────────────────────────────────────────────
   const [midiLearnWidget, setMidiLearnWidget] = useState(null)
@@ -404,6 +406,12 @@ export default function App() {
       setCpuUsage(payload)
     })
 
+    // Consumo di token: arriva dopo ogni risposta dell'AI, con il costo
+    // della singola richiesta e il totale accumulato nella sessione.
+    const unsubUsage = whycremisi.on('ai.usage', (payload) => {
+      if (payload?.session) setTokenUsage(payload.session)
+    })
+
     // AI Action log
     const unsubActionLog = whycremisi.on('ai.action.log', (payload) => {
       if (payload.widgetId) {
@@ -474,7 +482,7 @@ export default function App() {
       window.removeEventListener('whycremisi-botstate', onBotState)
       stateUnsub(); unsubAI(); unsubStream(); unsubTransport()
       unsubMeter(); unsubOSC(); unsubStats(); unsubErr()
-      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubCpu();       unsubActionLog(); unsubPersAction(); unsubPersContext()
+      unsubLearnStatus(); unsubLearnComplete(); unsubChain(); unsubAnalyzer(); unsubCpu(); unsubUsage(); unsubActionLog(); unsubPersAction(); unsubPersContext()
       unsubWsStyle(); unsubWsMemory(); unsubWsBootstrap(); unsubWsRefresh()
       whycremisi.disconnect()
     }
@@ -898,6 +906,25 @@ export default function App() {
               </div>
             ))}
           </div>
+
+          {/* Token spesi nella sessione. Compare solo dopo la prima
+              risposta, per non mostrare uno zero fisso a vuoto. */}
+          {tokenUsage.total > 0 && (
+            <>
+              <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
+              <div
+                className="flex flex-col items-center leading-none"
+                title={`${tokenUsage.requests} richieste — ${tokenUsage.input} in, ${tokenUsage.output} out, ${tokenUsage.cacheRead} letti da cache`}
+              >
+                <span className="text-xs font-mono uppercase" style={{ color: 'var(--text-secondary)' }}>TOK</span>
+                <span className="text-xs font-bold text-white tracking-tight">
+                  {tokenUsage.total >= 1000
+                    ? `${(tokenUsage.total / 1000).toFixed(1)}k`
+                    : tokenUsage.total}
+                </span>
+              </div>
+            </>
+          )}
 
           <div className="w-px h-4" style={{ backgroundColor: 'var(--bg-elevated)' }} />
 

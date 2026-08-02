@@ -106,12 +106,28 @@ AIProvider::Result OpenAIProvider::sendPrompt(const juce::String& systemPrompt, 
             body["tools"] = tools;
     }
 
-    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
+    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders();
     juce::String raw = makeHttpRequest(getApiUrl(), "POST", juce::String(body.dump()), config.timeoutMs, authHeader);
     if (raw.isEmpty()) { result.error = "Empty response"; return result; }
 
     auto j = parseJsonSafe(raw);
+
+    // Consumo, nel formato OpenAI-compatibile usato anche da OpenRouter e Groq.
+    if (j.contains("usage") && j["usage"].is_object()) {
+        const auto& u = j["usage"];
+        auto readInt = [&u](const char* key) {
+            return (u.contains(key) && u[key].is_number_integer()) ? u[key].get<int>() : 0;
+        };
+        result.usage.inputTokens  = readInt("prompt_tokens");
+        result.usage.outputTokens = readInt("completion_tokens");
+    }
+
+    if (j.contains("model") && j["model"].is_string())
+        result.modelUsed = juce::String(j["model"].get<std::string>());
+
     if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
+        if (j["choices"][0].contains("finish_reason") && j["choices"][0]["finish_reason"].is_string())
+            result.stopReason = juce::String(j["choices"][0]["finish_reason"].get<std::string>());
         auto& msg = j["choices"][0]["message"];
         if (msg.contains("content") && !msg["content"].is_null())
             result.text = juce::String(msg["content"].get<std::string>());
@@ -153,7 +169,7 @@ void OpenAIProvider::sendPromptStreaming(const juce::String& systemPrompt, const
             body["tools"] = tools;
     }
 
-    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n";
+    juce::String authHeader = "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders();
     juce::URL url(getApiUrl());
 
     auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
@@ -212,6 +228,64 @@ bool OpenAIProvider::testConnection()
 juce::StringArray OpenAIProvider::getAvailableModels()
 {
     return {"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  OpenRouter Provider
+// ═══════════════════════════════════════════════════════════════════
+//
+//  Via d'accesso per chi non ha un abbonamento Claude e non vuole pagare a
+//  consumo: una sola chiave, creabile gratis, da' accesso ai modelli di piu'
+//  fornitori, e quelli con suffisso ":free" non si pagano. In cambio i
+//  modelli gratuiti hanno limiti di frequenza piu' stretti e possono essere
+//  lenti nelle ore di punta.
+
+juce::String OpenRouterProvider::getExtraHeaders() const
+{
+    // OpenRouter usa questi due header per attribuire il traffico
+    // all'applicazione che lo genera. Non sono obbligatori, ma senza il
+    // plugin risulta traffico anonimo.
+    return "HTTP-Referer: https://github.com/OfficialWhyEd/WhyCremisi\r\n"
+           "X-Title: WhyCremisi\r\n";
+}
+
+juce::StringArray OpenRouterProvider::freeModels()
+{
+    return {
+        "deepseek/deepseek-r1:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "google/gemma-2-9b-it:free",
+    };
+}
+
+juce::StringArray OpenRouterProvider::getAvailableModels()
+{
+    // Prima i gratuiti, poi i modelli di punta a pagamento: chi arriva qui
+    // di solito cerca proprio l'opzione senza costi.
+    auto models = freeModels();
+    models.addArray ({
+        "anthropic/claude-opus-4.5",
+        "anthropic/claude-sonnet-4.5",
+        "openai/gpt-4o",
+        "google/gemini-2.0-flash-001",
+    });
+    return models;
+}
+
+bool OpenRouterProvider::testConnection()
+{
+    if (config.apiKey.isEmpty()) return false;
+
+    // Interroghiamo l'elenco modelli invece di generare: e' una GET, non
+    // consuma nulla e valida comunque la chiave.
+    juce::String raw = makeHttpRequest ("https://openrouter.ai/api/v1/models", "GET", {},
+                                        10000,
+                                        "Authorization: Bearer " + config.apiKey + "\r\n" + getExtraHeaders());
+    if (raw.isEmpty()) return false;
+
+    auto j = parseJsonSafe (raw);
+    return j.contains ("data") && j["data"].is_array();
 }
 
 // ═══════════════════════════════════════════════════════════════════

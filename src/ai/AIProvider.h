@@ -96,6 +96,9 @@ public:
 
 protected:
     virtual juce::String getApiUrl() const;
+    // Header aggiuntivi oltre a Authorization, per i servizi compatibili
+    // OpenAI che ne richiedono di propri.
+    virtual juce::String getExtraHeaders() const { return {}; }
     juce::String makeHttpRequest(const juce::String& url, const juce::String& method,
                                   const juce::String& jsonBody, int timeoutMs,
                                   const juce::String& extraHeaders = {});
@@ -170,13 +173,25 @@ private:
     bool searchEnabled = false;
 };
 
+// OpenRouter fa da passacarte verso i modelli di molti fornitori con una
+// chiave sola, e offre alcuni modelli gratuiti. E' la via d'accesso per chi
+// non ha un abbonamento Claude ne' vuole pagare a consumo: la chiave si crea
+// gratis e i modelli con suffisso ":free" non si pagano.
 class OpenRouterProvider : public OpenAIProvider
 {
 public:
     using OpenAIProvider::OpenAIProvider;
     juce::String getName() const override { return "OpenRouter"; }
+    juce::StringArray getAvailableModels() override;
+    bool testConnection() override;
+
+    // Modelli utilizzabili senza spendere nulla.
+    static juce::StringArray freeModels();
+    static bool isFreeModel (const juce::String& modelId) { return modelId.endsWith (":free"); }
+
 private:
     juce::String getApiUrl() const override { return "https://openrouter.ai/api/v1/chat/completions"; }
+    juce::String getExtraHeaders() const override;
 };
 
 class GroqProvider : public OpenAIProvider

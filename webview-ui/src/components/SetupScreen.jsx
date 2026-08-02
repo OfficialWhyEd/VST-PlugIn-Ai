@@ -7,7 +7,23 @@ const modelsByProvider = {
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
+  openrouter: [
+    'deepseek/deepseek-r1:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'qwen/qwen-2.5-72b-instruct:free',
+    'google/gemma-2-9b-it:free',
+    'anthropic/claude-opus-4.5',
+    'anthropic/claude-sonnet-4.5',
+    'openai/gpt-4o',
+    'google/gemini-2.0-flash-001',
+  ],
 }
+
+// I modelli con questo suffisso non si pagano.
+const isFreeModel = (m) => m.endsWith(':free')
+
+// Su OpenRouter gli id sono lunghi: nella UI mostriamo solo il nome.
+const shortModelName = (m) => m.replace(':free', '').split('/').pop()
 
 // Etichette leggibili: nella UI si sceglie "Opus 5", non "claude-opus-5".
 const modelLabels = {
@@ -31,6 +47,7 @@ const providerNames = {
   gemini: 'GEMINI',
   openai: 'OPENAI',
   anthropic: 'CLAUDE',
+  openrouter: 'OPENROUTER',
 }
 
 export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
@@ -80,6 +97,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini Pro.', keyRequired: true, keyPrefix: 'AIza' },
     { id: 'openai',    icon: 'auto_awesome', desc: 'OpenAI GPT-4o.', keyRequired: true, keyPrefix: 'sk-' },
     { id: 'anthropic', icon: 'Psychology',   desc: 'Claude Opus 5, Sonnet 5, Haiku.', keyRequired: true, keyPrefix: 'sk-ant-' },
+    { id: 'openrouter', icon: 'hub',         desc: 'Senza abbonamento: modelli gratuiti con una chiave gratis.', keyRequired: true, keyPrefix: 'sk-or-' },
   ]
 
   const handleTestConnection = async () => {
@@ -273,6 +291,19 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 </div>
               )}
 
+              {provider === 'openrouter' && (
+                <div className="mb-2 px-2 py-1.5 border border-[#1a1a1a] bg-[#0d0d0d]">
+                  <p className="text-[8px] text-[#00E5FF] font-bold uppercase tracking-widest mb-0.5">
+                    Nessun abbonamento necessario
+                  </p>
+                  <p className="text-[7px] text-[#777] leading-relaxed">
+                    La chiave di OpenRouter si crea gratis su openrouter.ai e i modelli
+                    contrassegnati <span className="text-[#00FFaa] font-bold">FREE</span> non si pagano.
+                    In cambio hanno limiti di frequenza più stretti e nelle ore di punta possono essere lenti.
+                  </p>
+                </div>
+              )}
+
               {needsApiKey && (
                 <div className="mb-3">
                   <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
@@ -281,7 +312,12 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   <div className="relative flex">
                     <input
                       type={showKey ? 'text' : 'password'}
-                      placeholder={provider === 'gemini' ? 'AIza...' : provider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                      placeholder={
+                        provider === 'gemini' ? 'AIza...'
+                        : provider === 'openai' ? 'sk-...'
+                        : provider === 'openrouter' ? 'sk-or-...'
+                        : 'sk-ant-...'
+                      }
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       className="flex-1 bg-[#0d0d0d] border border-[#1a1a1a] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#DC143C] focus:outline-none transition-colors"
@@ -302,6 +338,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   {apiKey.length > 0 && provider === 'anthropic' && !apiKey.startsWith('sk-ant-') && (
                     <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">Anthropic keys start with "sk-ant-..."</p>
                   )}
+                  {apiKey.length > 0 && provider === 'openrouter' && !apiKey.startsWith('sk-or-') && (
+                    <p className="text-[8px] text-[#FFB000] font-mono mt-0.5">OpenRouter keys start with "sk-or-..."</p>
+                  )}
                 </div>
               )}
 
@@ -310,6 +349,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 <div className="flex flex-wrap gap-1">
                   {(modelsByProvider[provider] || []).map(m => {
                     const label = modelLabels[m]
+                    const free = isFreeModel(m)
+                    const text = label ? label.name
+                      : provider === 'openrouter' ? shortModelName(m)
+                      : m
                     return (
                       <motion.button
                         key={m}
@@ -317,12 +360,19 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setModel(m)}
                         title={label ? `${m} — ${label.note}` : m}
-                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all ${
+                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all flex items-center gap-1 ${
                           model === m
                             ? 'bg-[#DC143C] text-white border-[#DC143C]'
                             : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
                         }`}
-                      >{label ? label.name : m}</motion.button>
+                      >
+                        {text}
+                        {free && (
+                          <span className={`text-[6px] px-1 leading-[1.4] ${
+                            model === m ? 'bg-white/20 text-white' : 'bg-[#00FFaa]/15 text-[#00FFaa]'
+                          }`}>FREE</span>
+                        )}
+                      </motion.button>
                     )
                   })}
                 </div>
