@@ -19,6 +19,17 @@ public:
         float temperature = 0.7f;
         juce::String toolsJson;          // JSON array of tool definitions (OpenAI/Anthropic format)
         juce::String contextMessages;     // JSON array of prior messages for multi-turn
+
+        // Token OAuth di un abbonamento Claude (Pro / Max / Claude Code).
+        // Se valorizzato ha la precedenza sulla apiKey: si autentica con
+        // "Authorization: Bearer", non con "x-api-key", e richiede il beta
+        // header oauth-2025-04-20. Serve a chi ha gia' un abbonamento e non
+        // vuole procurarsi una chiave API separata.
+        juce::String authToken;
+
+        // Profondita' di ragionamento su Claude: low | medium | high | xhigh | max.
+        // Vuoto = default del modello (high).
+        juce::String effort;
     };
 
     struct ToolCallResult {
@@ -29,11 +40,28 @@ public:
         bool hasOutput = false;
     };
 
+    // Consumo di una singola richiesta. Serve a mostrare all'utente quanto
+    // sta spendendo, e a capire se il prompt caching sta funzionando: se
+    // cacheReadTokens resta a zero fra richieste che condividono lo stesso
+    // preambolo, qualcosa lo sta invalidando.
+    struct Usage {
+        int inputTokens = 0;
+        int outputTokens = 0;
+        int cacheReadTokens = 0;
+        int cacheWriteTokens = 0;
+
+        int total() const { return inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens; }
+        bool isEmpty() const { return total() == 0; }
+    };
+
     struct Result {
         juce::String text;
         bool success = false;
         juce::String error;
         std::vector<ToolCallResult> toolCalls;  // populated when model requests tool use
+        Usage usage;
+        juce::String stopReason;   // end_turn | tool_use | max_tokens | refusal | ...
+        juce::String modelUsed;    // modello che ha effettivamente risposto
     };
 
     using StreamCallback = std::function<void(const juce::String& chunk, bool isDone)>;
@@ -84,10 +112,31 @@ public:
     juce::StringArray getAvailableModels() override;
     juce::String getName() const override { return "Anthropic Claude"; }
 
+    // Modello di riferimento del progetto.
+    static juce::String defaultModel() { return "claude-opus-5"; }
+
+    // Etichetta leggibile per la UI: "Opus 5" invece di "claude-opus-5".
+    static juce::String displayNameFor (const juce::String& modelId);
+
+    // Cerca un token di abbonamento gia' presente sulla macchina, cosi' chi
+    // ha gia' Claude non deve incollare niente. Stringa vuota se non c'e'.
+    static juce::String detectSubscriptionToken();
+
+    // true quando l'autenticazione avviene con un abbonamento Claude invece
+    // che con una chiave API.
+    bool usesSubscription() const { return config.authToken.isNotEmpty(); }
+
 private:
     juce::String makeHttpRequest(const juce::String& url, const juce::String& method,
                                   const juce::String& jsonBody, int timeoutMs,
                                   const juce::String& extraHeaders = {});
+
+    // Header di autenticazione + versione API, uguali per tutte le chiamate.
+    juce::String buildHeaders() const;
+
+    // Corpo della richiesta condiviso fra chiamata singola e streaming.
+    nlohmann::json buildRequestBody (const juce::String& systemPrompt,
+                                     const juce::String& userMessage) const;
 };
 
 class OllamaProvider : public AIProvider

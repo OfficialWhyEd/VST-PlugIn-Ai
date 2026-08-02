@@ -11,6 +11,7 @@
 
 #include "OscBridge.h"
 #include "AiEngine.h"
+#include "AIProvider.h"
 #include "ToolRegistry.h"
 #include "SessionManager.h"
 #include "MidiHandler.h"
@@ -1596,24 +1597,34 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         
         if (aiEngine)
         {
-            AiEngine::Config cfg;
-            cfg.baseUrl = "http://localhost:11434";
-            cfg.model = "llama3.2";
-            
-            if (provider == "ollama")
-                cfg.provider = AiEngine::Provider::Ollama;
-            else if (provider == "gemini")
-                cfg.provider = AiEngine::Provider::Gemini;
-            else if (provider == "anthropic")
-                cfg.provider = AiEngine::Provider::Anthropic;
-            else if (provider == "openai")
-                cfg.provider = AiEngine::Provider::OpenAI;
-            else if (provider == "openrouter")
-                cfg.provider = AiEngine::Provider::OpenRouter;
-            else if (provider == "groq")
-                cfg.provider = AiEngine::Provider::Groq;
-            
-            aiEngine->configure(cfg);
+            // updateConfig e non configure: configure sostituisce l'intera
+            // configurazione, quindi cambiare provider azzererebbe chiave,
+            // modello e tutto il resto impostato prima.
+            aiEngine->updateConfig([&provider](AiEngine::Config& cfg)
+            {
+                if (provider == "ollama")
+                {
+                    cfg.provider = AiEngine::Provider::Ollama;
+                    if (cfg.baseUrl.isEmpty()) cfg.baseUrl = "http://localhost:11434";
+                    if (cfg.model.isEmpty())   cfg.model = "llama3.2";
+                }
+                else if (provider == "gemini")
+                    cfg.provider = AiEngine::Provider::Gemini;
+                else if (provider == "anthropic")
+                {
+                    cfg.provider = AiEngine::Provider::Anthropic;
+                    // Senza un modello valido la prima richiesta fallirebbe:
+                    // se non ne e' stato scelto uno, si parte da Opus 5.
+                    if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
+                        cfg.model = AnthropicProvider::defaultModel();
+                }
+                else if (provider == "openai")
+                    cfg.provider = AiEngine::Provider::OpenAI;
+                else if (provider == "openrouter")
+                    cfg.provider = AiEngine::Provider::OpenRouter;
+                else if (provider == "groq")
+                    cfg.provider = AiEngine::Provider::Groq;
+            });
         }
         
         nlohmann::json rp;
@@ -1630,11 +1641,12 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         
         if (aiEngine)
         {
-            AiEngine::Config cfg;
-            cfg.model = juce::String(model.data());
-            aiEngine->configure(cfg);
+            aiEngine->updateConfig([&model](AiEngine::Config& cfg)
+            {
+                cfg.model = juce::String(model.data());
+            });
         }
-        
+
         nlohmann::json rp;
         rp["key"] = "ai.model";
         rp["value"] = model;
@@ -1651,16 +1663,112 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         
         if (aiEngine)
         {
-            AiEngine::Config cfg;
-            cfg.apiKey = juce::String(apiKey.data());
-            aiEngine->configure(cfg);
+            aiEngine->updateConfig([&apiKey](AiEngine::Config& cfg)
+            {
+                cfg.apiKey = juce::String(apiKey.data());
+                // Chiave API e abbonamento sono alternativi: impostarne una
+                // deve annullare l'altro, altrimenti resterebbero entrambi
+                // e il token vincerebbe silenziosamente sulla chiave.
+                cfg.authToken = {};
+            });
         }
-        
+
         nlohmann::json rp;
         rp["key"] = "ai.apiKey";
         rp["provider"] = provider;
         rp["status"] = "ok";
         rp["masked"] = true;
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.authToken")
+    {
+        // Login con un abbonamento Claude (Pro / Max / Claude Code): al posto
+        // di una chiave API si passa il token OAuth, che il provider manda
+        // come Bearer. La UI lo ottiene dal flusso di login e non lo rilegge
+        // mai indietro.
+        if (!payload.contains("value") || !payload["value"].is_string()) return;
+        std::string token = payload["value"].get<std::string>();
+        log("[CONFIG] Claude subscription token " + juce::String(token.empty() ? "cleared" : "set"));
+
+        if (aiEngine)
+        {
+            aiEngine->updateConfig([&token](AiEngine::Config& cfg)
+            {
+                cfg.authToken = juce::String(token.data());
+                if (! token.empty())
+                {
+                    cfg.apiKey = {};
+                    cfg.provider = AiEngine::Provider::Anthropic;
+                    if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
+                        cfg.model = AnthropicProvider::defaultModel();
+                }
+            });
+        }
+
+        nlohmann::json rp;
+        rp["key"] = "ai.authToken";
+        rp["status"] = "ok";
+        rp["masked"] = true;
+        rp["connected"] = ! token.empty();
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.detectSubscription")
+    {
+        // La UI chiede se sulla macchina c'e' gia' un abbonamento Claude
+        // utilizzabile, per poter offrire l'accesso senza chiedere nulla.
+        auto token = AnthropicProvider::detectSubscriptionToken();
+
+        if (token.isNotEmpty() && aiEngine)
+        {
+            aiEngine->updateConfig([&token](AiEngine::Config& cfg)
+            {
+                cfg.authToken = token;
+                cfg.apiKey = {};
+                cfg.provider = AiEngine::Provider::Anthropic;
+                if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
+                    cfg.model = AnthropicProvider::defaultModel();
+            });
+        }
+
+        nlohmann::json rp;
+        rp["key"] = "ai.detectSubscription";
+        rp["status"] = "ok";
+        rp["found"] = token.isNotEmpty();
+        // Il token non torna mai indietro: alla UI basta sapere che c'e'.
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.effort")
+    {
+        // Profondita' di ragionamento su Claude. Piu' alta significa risposte
+        // migliori sui compiti difficili e piu' token spesi.
+        if (!payload.contains("value") || !payload["value"].is_string()) return;
+        std::string effort = payload["value"].get<std::string>();
+
+        static const juce::StringArray validEffort { "low", "medium", "high", "xhigh", "max" };
+        if (! validEffort.contains (juce::String (effort.data())))
+        {
+            nlohmann::json err;
+            err["key"] = "ai.effort";
+            err["status"] = "error";
+            err["message"] = "Valori ammessi: low, medium, high, xhigh, max";
+            sendConfigResponse(err);
+            return;
+        }
+
+        log("[CONFIG] Claude effort set to: " + juce::String(effort.data()));
+
+        if (aiEngine)
+        {
+            aiEngine->updateConfig([&effort](AiEngine::Config& cfg)
+            {
+                cfg.effort = juce::String(effort.data());
+            });
+        }
+
+        nlohmann::json rp;
+        rp["key"] = "ai.effort";
+        rp["value"] = effort;
+        rp["status"] = "ok";
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.ollamaUrl")
@@ -1671,10 +1779,11 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         
         if (aiEngine)
         {
-            AiEngine::Config cfg;
-            cfg.baseUrl = juce::String(url.data());
-            cfg.provider = AiEngine::Provider::Ollama;
-            aiEngine->configure(cfg);
+            aiEngine->updateConfig([&url](AiEngine::Config& cfg)
+            {
+                cfg.baseUrl = juce::String(url.data());
+                cfg.provider = AiEngine::Provider::Ollama;
+            });
         }
         
         nlohmann::json rp;
@@ -2023,6 +2132,26 @@ void OscBridge::setAiEngine(AiEngine* engine)
 {
     aiEngine = engine;
     if (!aiEngine) return;
+
+    // Consumo: a ogni risposta la UI riceve i token della singola richiesta
+    // e il totale di sessione, cosi' l'utente vede quanto sta spendendo.
+    aiEngine->onUsageUpdate = [this](const AIProvider::Usage& last,
+                                     const AiEngine::SessionUsage& session)
+    {
+        nlohmann::json msg;
+        msg["type"] = "ai.usage";
+        msg["payload"]["last"]["input"]      = last.inputTokens;
+        msg["payload"]["last"]["output"]     = last.outputTokens;
+        msg["payload"]["last"]["cacheRead"]  = last.cacheReadTokens;
+        msg["payload"]["last"]["cacheWrite"] = last.cacheWriteTokens;
+        msg["payload"]["session"]["input"]      = session.inputTokens;
+        msg["payload"]["session"]["output"]     = session.outputTokens;
+        msg["payload"]["session"]["cacheRead"]  = session.cacheReadTokens;
+        msg["payload"]["session"]["cacheWrite"] = session.cacheWriteTokens;
+        msg["payload"]["session"]["requests"]   = session.requests;
+        msg["payload"]["session"]["total"]      = session.total();
+        broadcastJson(msg);
+    };
 
     // Wire tool executor: maps tool calls → DAW commands / widget control
     aiEngine->setToolExecutor([this](const ToolCall& call) -> ToolResult {

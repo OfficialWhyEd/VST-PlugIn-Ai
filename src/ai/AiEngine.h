@@ -15,6 +15,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include "AIProvider.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -48,6 +49,11 @@ public:
         int maxTokens = 2048;
         float temperature = 0.7f;
         AiPersonalityStyle personalityStyle = AiPersonalityStyle::Analytical;
+
+        // Token di un abbonamento Claude, in alternativa alla chiave API.
+        juce::String authToken;
+        // Profondita' di ragionamento su Claude: low | medium | high | xhigh | max.
+        juce::String effort;
     };
 
     struct AiAction {
@@ -100,6 +106,28 @@ public:
     bool testConnection();
     juce::String getLastError() const { return lastError; }
     bool isConfigured() const { return configured; }
+
+    // ── Consumo ────────────────────────────────────────────────
+    // Somma dei token spesi da quando la sessione e' iniziata, cosi' la UI
+    // puo' mostrare quanto si sta consumando invece di lasciarlo indovinare.
+    struct SessionUsage {
+        long long inputTokens = 0;
+        long long outputTokens = 0;
+        long long cacheReadTokens = 0;
+        long long cacheWriteTokens = 0;
+        int requests = 0;
+
+        long long total() const {
+            return inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+        }
+    };
+
+    SessionUsage getSessionUsage() const;
+    void resetSessionUsage();
+
+    // Notificata a ogni risposta: parametri (consumo della singola richiesta,
+    // totale di sessione). Serve al bridge per aggiornare la UI in tempo reale.
+    std::function<void(const AIProvider::Usage&, const SessionUsage&)> onUsageUpdate;
     juce::String getProviderName() const;
     juce::String getModelName() const { return config.model; }
 
@@ -174,6 +202,11 @@ private:
     void syncWidgetTools();
 
     mutable std::mutex engineMutex;
+
+    // Protetto da usageMutex: le risposte possono arrivare da thread diversi.
+    mutable std::mutex usageMutex;
+    SessionUsage sessionUsage;
+    void accumulateUsage (const AIProvider::Usage& usage);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };

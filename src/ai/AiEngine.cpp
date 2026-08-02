@@ -138,6 +138,40 @@ void AiEngine::setPersonalityStyle(AiPersonalityStyle style)
     config.personalityStyle = style;
 }
 
+// ── Consumo ────────────────────────────────────────────────
+
+void AiEngine::accumulateUsage (const AIProvider::Usage& usage)
+{
+    if (usage.isEmpty()) return;
+
+    SessionUsage snapshot;
+    {
+        std::lock_guard<std::mutex> lock(usageMutex);
+        sessionUsage.inputTokens      += usage.inputTokens;
+        sessionUsage.outputTokens     += usage.outputTokens;
+        sessionUsage.cacheReadTokens  += usage.cacheReadTokens;
+        sessionUsage.cacheWriteTokens += usage.cacheWriteTokens;
+        sessionUsage.requests++;
+        snapshot = sessionUsage;
+    }
+
+    // Notifica fuori dal lock: il destinatario puo' fare lavoro arbitrario.
+    if (onUsageUpdate)
+        onUsageUpdate (usage, snapshot);
+}
+
+AiEngine::SessionUsage AiEngine::getSessionUsage() const
+{
+    std::lock_guard<std::mutex> lock(usageMutex);
+    return sessionUsage;
+}
+
+void AiEngine::resetSessionUsage()
+{
+    std::lock_guard<std::mutex> lock(usageMutex);
+    sessionUsage = {};
+}
+
 // ── Personality Style Helpers ──────────────────────────────
 
 juce::StringArray AiEngine::getPersonalityStyleNames()
@@ -185,6 +219,8 @@ std::unique_ptr<AIProvider> AiEngine::createProvider(Provider type)
     pcfg.timeoutMs = config.timeoutMs;
     pcfg.maxTokens = config.maxTokens;
     pcfg.temperature = config.temperature;
+    pcfg.authToken = config.authToken;
+    pcfg.effort = config.effort;
 
     switch (type) {
         case Provider::OpenAI:     return std::make_unique<OpenAIProvider>(pcfg);
@@ -463,6 +499,7 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
     syncProviderConfig();
 
     auto result = currentProvider->sendPrompt(systemPrompt, prompt);
+    accumulateUsage (result.usage);
 
     if (!result.success) {
         response.text = "[ERROR] " + result.error;
@@ -510,6 +547,7 @@ AiEngine::StructuredResponse AiEngine::sendPromptStructured(const juce::String& 
 
         // Send follow-up — let AI see tool results and decide next step
         result = currentProvider->sendPrompt(systemPrompt, "Continue with the tool results above.");
+        accumulateUsage (result.usage);
         if (!result.success) {
             response.text = "[ERROR] " + result.error;
             return response;

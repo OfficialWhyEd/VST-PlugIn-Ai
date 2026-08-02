@@ -6,8 +6,25 @@ const modelsByProvider = {
   ollama:    ['llama3.2', 'llama3.1', 'mistral', 'mixtral', 'codellama', 'qwen2.5'],
   gemini:    ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview', 'gemini-2.0-flash', 'gemini-1.5-pro'],
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+  anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
 }
+
+// Etichette leggibili: nella UI si sceglie "Opus 5", non "claude-opus-5".
+const modelLabels = {
+  'claude-opus-5':    { name: 'Opus 5',    note: 'Il piuù capace' },
+  'claude-sonnet-5':  { name: 'Sonnet 5',  note: 'Equilibrato' },
+  'claude-haiku-4-5': { name: 'Haiku 4.5', note: 'Rapido ed economico' },
+}
+
+// Profondità di ragionamento. Alza la qualità sui compiti difficili e
+// il numero di token spesi.
+const effortLevels = [
+  { id: 'low',    label: 'Low',    note: 'Risposte rapide' },
+  { id: 'medium', label: 'Medium', note: 'Compromesso' },
+  { id: 'high',   label: 'High',   note: 'Predefinito' },
+  { id: 'xhigh',  label: 'X-High', note: 'Compiti complessi' },
+  { id: 'max',    label: 'Max',    note: 'Nessun compromesso' },
+]
 
 const providerNames = {
   ollama: 'LOCAL CORE',
@@ -23,8 +40,21 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [status, setStatus] = useState('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [showKey, setShowKey] = useState(false)
+  // Su Claude si può entrare con un abbonamento invece che con una chiave API.
+  const [claudeAuthMode, setClaudeAuthMode] = useState(initialConfig.claudeAuthMode || 'subscription')
+  const [effort, setEffort] = useState(initialConfig.effort || 'high')
+  // Token incollato a mano; resta vuoto quando il plugin ne trova già uno.
+  const [subscriptionToken, setSubscriptionToken] = useState('')
+  // null = non ancora verificato, true/false = esito del rilevamento.
+  const [subscriptionDetected, setSubscriptionDetected] = useState(null)
   const unsubRef = useRef(null)
   const timeoutsRef = useRef([])
+
+  const isClaude = provider === 'anthropic'
+  const usingSubscription = isClaude && claudeAuthMode === 'subscription'
+  // Il campo credenziale non serve quando si usa Ollama in locale né quando
+  // si entra con l'abbonamento Claude.
+  const needsApiKey = provider !== 'ollama' && !usingSubscription
 
   useEffect(() => {
     return () => {
@@ -33,11 +63,23 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     }
   }, [])
 
+  // Quando si sceglie Claude, chiediamo al plugin se sulla macchina c'è già
+  // un abbonamento utilizzabile: se sì non serve chiedere nulla all'utente.
+  useEffect(() => {
+    if (!isClaude || !whycremisi.isConnected()) return
+    const unsub = whycremisi.on('config.response', (payload) => {
+      if (payload?.key !== 'ai.detectSubscription') return
+      setSubscriptionDetected(!!payload.found)
+    })
+    whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
+    return unsub
+  }, [isClaude])
+
   const providers = [
     { id: 'ollama',    icon: 'memory',       desc: 'Run AI locally on your Mac. No API key needed.', keyRequired: false },
     { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini Pro.', keyRequired: true, keyPrefix: 'AIza' },
     { id: 'openai',    icon: 'auto_awesome', desc: 'OpenAI GPT-4o.', keyRequired: true, keyPrefix: 'sk-' },
-    { id: 'anthropic', icon: 'Psychology',   desc: 'Anthropic Claude 3.5.', keyRequired: true, keyPrefix: 'sk-ant-' },
+    { id: 'anthropic', icon: 'Psychology',   desc: 'Claude Opus 5, Sonnet 5, Haiku.', keyRequired: true, keyPrefix: 'sk-ant-' },
   ]
 
   const handleTestConnection = async () => {
@@ -47,7 +89,13 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     if (whycremisi.isConnected()) {
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: provider } })
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.model', value: model } })
-      if (apiKey)
+      if (isClaude)
+        whycremisi.send({ type: 'config.set', payload: { key: 'ai.effort', value: effort } })
+      // Chiave API e abbonamento sono alternativi: il plugin azzera l'uno
+      // quando riceve l'altro, quindi ne mandiamo esattamente uno.
+      if (usingSubscription)
+        whycremisi.send({ type: 'config.set', payload: { key: 'ai.authToken', value: subscriptionToken } })
+      else if (apiKey)
         whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey, provider } })
     }
 
@@ -64,7 +112,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
         unsubRef.current = null
         if (payload.connected) {
           setStatus('success')
-          const t = setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          const t = setTimeout(() => onComplete({ provider, model, apiKey, effort, claudeAuthMode }), 1200)
           timeoutsRef.current.push(t)
         } else {
           setStatus('error')
@@ -75,9 +123,12 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
       whycremisi.send({ type: 'config.set', payload: { key: 'ai.testConnection' } })
     } else {
       const t = setTimeout(() => {
-        if (provider === 'ollama' || apiKey.length > 10) {
+        const hasCredential = provider === 'ollama'
+          || (usingSubscription && (subscriptionDetected || subscriptionToken.length > 10))
+          || apiKey.length > 10
+        if (hasCredential) {
           setStatus('success')
-          const t2 = setTimeout(() => onComplete({ provider, model, apiKey }), 1200)
+          const t2 = setTimeout(() => onComplete({ provider, model, apiKey, effort, claudeAuthMode }), 1200)
           timeoutsRef.current.push(t2)
         } else {
           setStatus('error')
@@ -167,7 +218,62 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              {provider !== 'ollama' && (
+              {isClaude && (
+                <div className="mb-3">
+                  <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
+                    Accesso
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'subscription', label: 'Abbonamento', note: 'Claude Pro, Max o Claude Code' },
+                      { id: 'apikey',       label: 'Chiave API',  note: 'Consumo a token' },
+                    ].map(mode => {
+                      const active = claudeAuthMode === mode.id
+                      return (
+                        <button
+                          key={mode.id}
+                          onClick={() => setClaudeAuthMode(mode.id)}
+                          className={`px-2 py-1.5 border text-left transition-all ${
+                            active
+                              ? 'bg-[#1a1a1a] border-[#DC143C]'
+                              : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="text-[9px] font-bold text-white uppercase tracking-tight">{mode.label}</div>
+                          <div className="text-[7px] text-[#555] leading-tight">{mode.note}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {usingSubscription && (
+                    <div className="mt-1.5">
+                      {subscriptionDetected === true ? (
+                        <p className="text-[8px] text-[#00E5FF] font-mono">
+                          Abbonamento rilevato sulla macchina — nessuna chiave da inserire.
+                        </p>
+                      ) : (
+                        <>
+                          <input
+                            type="password"
+                            placeholder="Incolla il token dell'abbonamento"
+                            value={subscriptionToken}
+                            onChange={(e) => setSubscriptionToken(e.target.value)}
+                            className="w-full bg-[#0d0d0d] border border-[#1a1a1a] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#DC143C] focus:outline-none transition-colors"
+                          />
+                          <p className="text-[7px] text-[#555] leading-tight mt-0.5">
+                            {subscriptionDetected === false
+                              ? 'Nessun abbonamento trovato. Imposta ANTHROPIC_AUTH_TOKEN, oppure incolla il token qui.'
+                              : 'Ricerca di un abbonamento già presente…'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {needsApiKey && (
                 <div className="mb-3">
                   <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
                     API Key
@@ -202,21 +308,55 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               <div className="mb-3">
                 <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">Model</label>
                 <div className="flex flex-wrap gap-1">
-                  {(modelsByProvider[provider] || []).map(m => (
-                    <motion.button
-                      key={m}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setModel(m)}
-                      className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all ${
-                        model === m
-                          ? 'bg-[#DC143C] text-white border-[#DC143C]'
-                          : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
-                      }`}
-                    >{m}</motion.button>
-                  ))}
+                  {(modelsByProvider[provider] || []).map(m => {
+                    const label = modelLabels[m]
+                    return (
+                      <motion.button
+                        key={m}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setModel(m)}
+                        title={label ? `${m} — ${label.note}` : m}
+                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all ${
+                          model === m
+                            ? 'bg-[#DC143C] text-white border-[#DC143C]'
+                            : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
+                        }`}
+                      >{label ? label.name : m}</motion.button>
+                    )
+                  })}
                 </div>
+                {isClaude && modelLabels[model] && (
+                  <p className="text-[7px] text-[#555] leading-tight mt-0.5">{modelLabels[model].note}</p>
+                )}
               </div>
+
+              {isClaude && (
+                <div className="mb-3">
+                  <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">
+                    Ragionamento
+                  </label>
+                  <div className="flex flex-wrap gap-1">
+                    {effortLevels.map(lvl => (
+                      <motion.button
+                        key={lvl.id}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setEffort(lvl.id)}
+                        title={lvl.note}
+                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all ${
+                          effort === lvl.id
+                            ? 'bg-[#DC143C] text-white border-[#DC143C]'
+                            : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
+                        }`}
+                      >{lvl.label}</motion.button>
+                    ))}
+                  </div>
+                  <p className="text-[7px] text-[#555] leading-tight mt-0.5">
+                    Più alto significa risposte migliori sui compiti difficili e più token consumati.
+                  </p>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
 
@@ -225,7 +365,13 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               onClick={handleTestConnection}
-              disabled={status === 'testing' || (provider !== 'ollama' && !apiKey)}
+              disabled={
+                status === 'testing' ||
+                (needsApiKey && !apiKey) ||
+                // Con l'abbonamento serve o un token già presente sulla
+                // macchina, o uno incollato a mano.
+                (usingSubscription && !subscriptionDetected && !subscriptionToken)
+              }
               className={`flex-1 py-2 font-black uppercase tracking-[0.15em] text-[9px] flex items-center justify-center gap-2 transition-all ${
                 status === 'success' ? 'bg-[#00FFaa] text-black' :
                 status === 'error' ? 'bg-[#DC143C] text-white' :

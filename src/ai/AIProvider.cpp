@@ -225,35 +225,135 @@ juce::String AnthropicProvider::makeHttpRequest(const juce::String& url, const j
     return makeHttp(url, method, jsonBody, timeoutMs, extraHeaders);
 }
 
-AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
+juce::String AnthropicProvider::detectSubscriptionToken()
 {
-    Result result;
-    if (config.apiKey.isEmpty()) { result.error = "API key not configured"; return result; }
+    // Meccanismo ufficiale: ANTHROPIC_AUTH_TOKEN e' la variabile che l'SDK e
+    // la CLI Anthropic leggono per un token di abbonamento, ed e' quella che
+    // "ant auth print-credentials --env" esporta.
+    //
+    // Di proposito NON andiamo a leggere i file di credenziali di Claude Code
+    // o della CLI: sono segreti di un altro programma, con una struttura che
+    // puo' cambiare, e un plugin audio non ha motivo di frugarci dentro.
+    auto fromEnv = juce::SystemStats::getEnvironmentVariable ("ANTHROPIC_AUTH_TOKEN", {});
+    return fromEnv.trim();
+}
 
+juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)
+{
+    if (modelId == "claude-opus-5")    return "Opus 5";
+    if (modelId == "claude-sonnet-5")  return "Sonnet 5";
+    if (modelId == "claude-haiku-4-5") return "Haiku 4.5";
+    return modelId;
+}
+
+juce::String AnthropicProvider::buildHeaders() const
+{
+    juce::String headers = "anthropic-version: 2023-06-01\r\n";
+
+    if (config.authToken.isNotEmpty())
+    {
+        // Abbonamento Claude: il token va su Authorization, non su x-api-key,
+        // e senza il beta header /v1/messages rifiuta la richiesta.
+        headers += "Authorization: Bearer " + config.authToken + "\r\n";
+        headers += "anthropic-beta: oauth-2025-04-20\r\n";
+    }
+    else
+    {
+        headers += "x-api-key: " + config.apiKey + "\r\n";
+    }
+
+    return headers;
+}
+
+nlohmann::json AnthropicProvider::buildRequestBody (const juce::String& systemPrompt,
+                                                    const juce::String& userMessage) const
+{
     nlohmann::json body;
-    body["model"] = config.model.toStdString();
+    body["model"] = (config.model.isNotEmpty() ? config.model : defaultModel()).toStdString();
     body["max_tokens"] = (config.maxTokens > 0 ? config.maxTokens : 1024);
+
     if (systemPrompt.isNotEmpty())
         body["system"] = systemPrompt.toStdString();
-    body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", userMessage.toStdString()}}});
 
-    if (config.toolsJson.isNotEmpty()) {
+    // La conversazione precedente, se c'e', va prima del messaggio corrente:
+    // e' quello che rende la cache del prompt riutilizzabile fra un turno e
+    // l'altro invece di ripagare l'intero preambolo ogni volta.
+    nlohmann::json messages = nlohmann::json::array();
+    if (config.contextMessages.isNotEmpty())
+    {
+        auto prior = parseJsonSafe(config.contextMessages);
+        if (prior.is_array())
+            for (auto& m : prior)
+                messages.push_back(m);
+    }
+    messages.push_back({{"role", "user"}, {"content", userMessage.toStdString()}});
+    body["messages"] = messages;
+
+    // Niente temperature/top_p/top_k: sui modelli Claude attuali sono stati
+    // rimossi e la richiesta verrebbe rifiutata con un 400.
+    body["thinking"] = {{"type", "adaptive"}};
+
+    if (config.effort.isNotEmpty())
+        body["output_config"] = {{"effort", config.effort.toStdString()}};
+
+    if (config.toolsJson.isNotEmpty())
+    {
         auto tools = parseJsonSafe(config.toolsJson);
         if (tools.is_array() && !tools.empty())
             body["tools"] = tools;
     }
 
-    juce::String headers = "x-api-key: " + config.apiKey + "\r\nanthropic-version: 2023-06-01\r\n";
+    return body;
+}
+
+AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPrompt, const juce::String& userMessage)
+{
+    Result result;
+    if (config.apiKey.isEmpty() && config.authToken.isEmpty())
+    {
+        result.error = "Nessuna credenziale Claude: serve una chiave API oppure il login con un abbonamento.";
+        return result;
+    }
+
+    auto body = buildRequestBody (systemPrompt, userMessage);
+
     juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
-                                        juce::String(body.dump()), config.timeoutMs, headers);
+                                        juce::String(body.dump()), config.timeoutMs, buildHeaders());
     if (raw.isEmpty()) { result.error = "Empty response"; return result; }
 
     auto j = parseJsonSafe(raw);
+
+    if (j.contains("usage"))
+    {
+        const auto& u = j["usage"];
+        auto readInt = [&u](const char* key) {
+            return (u.contains(key) && u[key].is_number_integer()) ? u[key].get<int>() : 0;
+        };
+        result.usage.inputTokens     = readInt("input_tokens");
+        result.usage.outputTokens    = readInt("output_tokens");
+        result.usage.cacheReadTokens  = readInt("cache_read_input_tokens");
+        result.usage.cacheWriteTokens = readInt("cache_creation_input_tokens");
+    }
+
+    if (j.contains("model") && j["model"].is_string())
+        result.modelUsed = juce::String(j["model"].get<std::string>());
+
+    if (j.contains("stop_reason") && j["stop_reason"].is_string())
+        result.stopReason = juce::String(j["stop_reason"].get<std::string>());
+
+    // Un rifiuto arriva come risposta valida, non come errore HTTP, e con
+    // content vuoto: senza questo controllo sembrerebbe una risposta muta.
+    if (result.stopReason == "refusal")
+    {
+        result.error = "La richiesta e' stata rifiutata dai filtri di sicurezza del modello.";
+        return result;
+    }
+
     if (j.contains("content") && j["content"].is_array() && !j["content"].empty()) {
         for (auto& block : j["content"]) {
             juce::String type = juce::String(block["type"].get<std::string>());
             if (type == "text") {
-                result.text = juce::String(block["text"].get<std::string>());
+                result.text += juce::String(block["text"].get<std::string>());
             } else if (type == "tool_use") {
                 ToolCallResult tcr;
                 tcr.id = juce::String(block["id"].get<std::string>());
@@ -262,6 +362,8 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
                     tcr.arguments = block["input"];
                 result.toolCalls.push_back(tcr);
             }
+            // I blocchi "thinking" arrivano vuoti se non si chiede
+            // display: summarized, quindi non c'e' niente da mostrare.
         }
         result.success = true;
     } else {
@@ -272,23 +374,13 @@ AIProvider::Result AnthropicProvider::sendPrompt(const juce::String& systemPromp
 
 void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, const juce::String& userMessage, StreamCallback onChunk)
 {
-    if (!onChunk || config.apiKey.isEmpty()) { if (onChunk) onChunk("", true); return; }
+    if (!onChunk) return;
+    if (config.apiKey.isEmpty() && config.authToken.isEmpty()) { onChunk("", true); return; }
 
-    nlohmann::json body;
-    body["model"] = config.model.toStdString();
-    body["max_tokens"] = (config.maxTokens > 0 ? config.maxTokens : 1024);
-    if (systemPrompt.isNotEmpty())
-        body["system"] = systemPrompt.toStdString();
-    body["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", userMessage.toStdString()}}});
+    auto body = buildRequestBody (systemPrompt, userMessage);
     body["stream"] = true;
 
-    if (config.toolsJson.isNotEmpty()) {
-        auto tools = parseJsonSafe(config.toolsJson);
-        if (tools.is_array() && !tools.empty())
-            body["tools"] = tools;
-    }
-
-    juce::String headers = "x-api-key: " + config.apiKey + "\r\nanthropic-version: 2023-06-01\r\n";
+    juce::String headers = buildHeaders();
 
     juce::URL url("https://api.anthropic.com/v1/messages");
     auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
@@ -333,17 +425,32 @@ void AnthropicProvider::sendPromptStreaming(const juce::String& systemPrompt, co
 
 bool AnthropicProvider::testConnection()
 {
-    if (config.apiKey.isEmpty()) return false;
-    juce::String headers = "x-api-key: " + config.apiKey + "\r\nanthropic-version: 2023-06-01\r\n";
+    if (config.apiKey.isEmpty() && config.authToken.isEmpty()) return false;
+
+    // Ping sul modello piu' economico. max_tokens 1 basta a validare la
+    // credenziale: se e' sbagliata si torna indietro con un errore di auth
+    // prima ancora di generare qualcosa.
+    nlohmann::json ping;
+    ping["model"] = "claude-haiku-4-5";
+    ping["max_tokens"] = 1;
+    ping["messages"] = nlohmann::json::array({{{"role", "user"}, {"content", "ping"}}});
+
     juce::String raw = makeHttpRequest("https://api.anthropic.com/v1/messages", "POST",
-        "{\"model\":\"claude-3-haiku-20240307\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}",
-        10000, headers);
-    return !raw.contains("error") && raw.isNotEmpty();
+                                        juce::String(ping.dump()), 10000, buildHeaders());
+    if (raw.isEmpty()) return false;
+
+    auto j = parseJsonSafe(raw);
+    // Una risposta valida ha type "message"; un fallimento ha type "error".
+    return j.contains("type") && j["type"].is_string()
+        && juce::String(j["type"].get<std::string>()) == "message";
 }
 
 juce::StringArray AnthropicProvider::getAvailableModels()
 {
-    return {"claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"};
+    // I modelli attuali. Gli id non portano suffisso di data: aggiungerlo
+    // produce un 404. Opus 5 e' il default del progetto, Sonnet 5 il
+    // compromesso qualita'/costo, Haiku 4.5 quello rapido ed economico.
+    return { "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5" };
 }
 
 // ═══════════════════════════════════════════════════════════════════
