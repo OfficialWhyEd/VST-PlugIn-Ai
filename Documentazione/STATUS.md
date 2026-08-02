@@ -48,6 +48,16 @@ In più: il log di debug era hardcoded su `/tmp/whycremisi-debug.log`, percorso 
 
 - **MSVC e i caratteri accentati.** 25 sorgenti su 57 contengono simboli non-ASCII (`©`, `™`, `—`) nei commenti e nel watermark. Clang assume UTF-8, MSVC no: senza `/utf-8` interpreta quei byte con la codepage locale e va in errore di sintassi. Il flag è stato aggiunto al `CMakeLists.txt`.
 
+### Il plugin è stato provato con audio vero, per la prima volta
+
+Caricando il VST3 in `pedalboard` (Python) e misurando l'uscita è emerso che **il plugin alterava il suono appena inserito**: con i default di fabbrica il compressore lavorava 4:1 sopra −24 dB e il limiter tagliava a −6 dB, entrambi `enabled = true` e non bypassati. Un tono a −9 dBFS RMS usciva a −21,7 dBFS, con il picco intatto — la firma di una compressione ad attacco lento.
+
+Il punto non è la qualità del DSP, che funziona: è che nessuno l'aveva chiesto. WhyCremisi si carica sul master e nasce per leggere e suggerire, quindi deve essere trasparente finché non gli si chiede di intervenire. E soprattutto non c'era modo di spegnerlo: `DSPEngine::setBypass()` non è chiamato da nessuna parte e nel bridge OSC non esiste un comando che regoli soglia o ratio. Il `CompressorBox` della UI manda messaggi che non raggiungono il DSP interno.
+
+Ora EQ, compressore e limiter partono bypassati; l'analyzer resta attivo perché serve al metering e non tocca l'audio. Cablare i moduli alla UI e all'AI è in `TODO.md`.
+
+Verifica automatica: con bypass del DAW il delta è 0,00 dB, nessun NaN in uscita, nessun crash su blocchi consecutivi, 16 parametri esposti correttamente.
+
 ### Documentazione separata dal sito
 
 Il merge aveva fatto finire nella stessa cartella `docs/` sia la landing page GitHub Pages sia la documentazione tecnica. Ora `docs/` contiene solo il sito, la documentazione sta in `Documentazione/`.

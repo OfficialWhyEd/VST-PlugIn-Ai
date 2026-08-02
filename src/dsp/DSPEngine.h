@@ -28,5 +28,12 @@ public:
     enum Module { EqModule = 0, CompModule = 1, LimitModule = 2 };
 
 private:
-    bool bypass[3] = { false, false, false };
+    // EQ, compressore e limiter partono bypassati: WhyCremisi si carica sul
+    // master e deve essere trasparente finche' non gli si chiede di intervenire.
+    // Con i default di fabbrica (comp -24 dB 4:1, limiter -6 dB) il plugin
+    // appena inserito attenuava di ~12 dB un segnale a -9 dBFS RMS, senza che
+    // nessuno l'avesse chiesto e senza modo di spegnerlo: setBypass() non e'
+    // ancora raggiungibile ne' dalla UI ne' dal bridge OSC.
+    // L'analyzer resta sempre attivo: serve al metering e non tocca l'audio.
+    bool bypass[3] = { true, true, true };
 };

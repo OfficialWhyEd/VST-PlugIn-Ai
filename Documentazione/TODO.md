@@ -12,6 +12,7 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 - [ ] **Ricompilare su Mac dopo il merge** — il ramo unificato è stato verificato solo su Windows. Su macOS vanno riprovati il blocco `if(APPLE)` del `CMakeLists.txt` e il formato AU.
 - [ ] **Allineare la versione di JUCE** — su Mac è stato usato JUCE 8.0.12, su Windows c'è 8.0.4. Le API della WebView differiscono fra le due.
 - [ ] **Testare il feedback OSC dal DAW al plugin** — la direzione plugin → DAW funziona, l'inversa non è mai stata verificata davvero.
+- [ ] **Collegare la catena DSP alla UI e all'AI** — EQ, compressore e limiter esistono e funzionano, ma non è raggiungibile nulla: `DSPEngine::setBypass()` non viene chiamato da nessuna parte e nel bridge OSC non c'è un solo comando che imposti soglia, ratio o bande. Il `CompressorBox` della UI manda comandi che non arrivano al DSP interno. Finché non sono cablati, i moduli restano bypassati.
 
 ## Media priorità
 
@@ -36,3 +37,4 @@ Questo file elenca le cose aperte **fuori** dalla roadmap dei 100 step (`Documen
 - [x] **Rami riunificati** (01/08/2026) — `master` e `heartbroken-claude` riuniti; nel merge sono emersi il `getName()` spezzato che impediva a `master` di compilare, l'escaping JavaScript mai eseguito e il flag `/utf-8` mancante per MSVC.
 - [x] **Documentazione separata dal sito** (01/08/2026) — `docs/` è solo la landing page GitHub Pages, la documentazione sta in `Documentazione/`.
 - [x] **Riferimenti al repository corretti** (01/08/2026) — il repo è stato rinominato in `OfficialWhyEd/WhyCremisi`: aggiornati i comandi di clone e rimosso il remote `carlo`, che puntava a un repository non più esistente.
+- [x] **Il plugin non colora più il suono da solo** (01/08/2026) — misurando l'uscita con `pedalboard` è saltato fuori che con i default di fabbrica comprimeva 4:1 sopra −24 dB e limitava a −6 dB, attenuando di 12,7 dB un segnale a −9 dBFS RMS. Su un plugin che si carica sul master e che nasce per analizzare, è un comportamento sbagliato. Ora i moduli partono bypassati.
