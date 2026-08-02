@@ -93,10 +93,10 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   }, [isClaude])
 
   const providers = [
-    { id: 'ollama',    icon: 'memory',       desc: 'Run AI locally on your Mac. No API key needed.', keyRequired: false },
-    { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini Pro.', keyRequired: true, keyPrefix: 'AIza' },
+    { id: 'ollama',    icon: 'memory',       desc: 'In locale sulla tua macchina. Nessuna chiave.', keyRequired: false },
+    { id: 'gemini',    icon: 'cloud_queue',  desc: 'Google Gemini.', keyRequired: true, keyPrefix: 'AIza' },
     { id: 'openai',    icon: 'auto_awesome', desc: 'OpenAI GPT-4o.', keyRequired: true, keyPrefix: 'sk-' },
-    { id: 'anthropic', icon: 'Psychology',   desc: 'Claude Opus 5, Sonnet 5, Haiku.', keyRequired: true, keyPrefix: 'sk-ant-' },
+    { id: 'anthropic', icon: 'psychology',   desc: 'Claude Opus 5, Sonnet 5, Haiku.', keyRequired: true, keyPrefix: 'sk-ant-' },
     { id: 'openrouter', icon: 'hub',         desc: 'Senza abbonamento: modelli gratuiti con una chiave gratis.', keyRequired: true, keyPrefix: 'sk-or-' },
   ]
 
@@ -203,26 +203,31 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
             </div>
           </header>
 
-          <div className="grid grid-cols-4 gap-1.5 mb-3">
-            {providers.map(p => {
+          {/* Due colonne, con l'ultima card a piena larghezza quando i
+              provider sono in numero dispari: così nessuna resta orfana
+              su una riga occupandone solo un quarto. */}
+          <div className="grid grid-cols-2 gap-1.5 mb-3 items-stretch">
+            {providers.map((p, idx) => {
               const isSelected = provider === p.id
+              const isLastOdd = idx === providers.length - 1 && providers.length % 2 === 1
               return (
                 <motion.button
                   key={p.id}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
+                  style={isLastOdd ? { gridColumn: '1 / -1' } : undefined}
                   onClick={() => { setProvider(p.id); setModel(modelsByProvider[p.id][0]) }}
-                  className={`p-2 border text-left transition-all ${
+                  className={`px-2 py-1.5 border text-left transition-all flex items-center gap-2 min-h-[2.75rem] ${
                     isSelected
                       ? 'bg-[#1a1a1a] border-[#DC143C]'
                       : 'bg-[#0d0d0d] border-[#1a1a1a] opacity-50 hover:opacity-100'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="material-symbols-outlined text-xs" style={{ color: isSelected ? '#DC143C' : '#555' }}>{p.icon}</span>
-                    <span className="text-[9px] font-bold text-white uppercase tracking-tight">{providerNames[p.id]}</span>
-                  </div>
-                  <p className="text-[7px] text-[#555] leading-tight">{p.desc}</p>
+                  <span className="material-symbols-outlined text-sm flex-shrink-0" style={{ color: isSelected ? '#DC143C' : '#555' }}>{p.icon}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[9px] font-bold text-white uppercase tracking-tight leading-none mb-0.5">{providerNames[p.id]}</span>
+                    <span className="block text-[7px] text-[#555] leading-tight">{p.desc}</span>
+                  </span>
                 </motion.button>
               )
             })}
@@ -346,7 +351,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
 
               <div className="mb-3">
                 <label className="text-[8px] font-bold text-[#00E5FF] uppercase tracking-widest block mb-1">Model</label>
-                <div className="flex flex-wrap gap-1">
+                {/* Su OpenRouter i nomi sono lunghi e disuguali: in griglia
+                    restano incolonnati invece di spezzarsi a caso. */}
+                <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1' : 'flex flex-wrap gap-1'}>
                   {(modelsByProvider[provider] || []).map(m => {
                     const label = modelLabels[m]
                     const free = isFreeModel(m)
@@ -360,15 +367,15 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setModel(m)}
                         title={label ? `${m} — ${label.note}` : m}
-                        className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider border transition-all flex items-center gap-1 ${
+                        className={`px-2 py-1 text-[8px] font-bold uppercase tracking-wider border transition-all flex items-center justify-between gap-1 min-w-0 ${
                           model === m
                             ? 'bg-[#DC143C] text-white border-[#DC143C]'
                             : 'bg-[#0d0d0d] text-[#777] border-[#1a1a1a] hover:border-[#DC143C] hover:text-white'
                         }`}
                       >
-                        {text}
+                        <span className="truncate">{text}</span>
                         {free && (
-                          <span className={`text-[6px] px-1 leading-[1.4] ${
+                          <span className={`text-[6px] px-1 leading-[1.4] flex-shrink-0 ${
                             model === m ? 'bg-white/20 text-white' : 'bg-[#00FFaa]/15 text-[#00FFaa]'
                           }`}>FREE</span>
                         )}
