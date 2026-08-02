@@ -38,6 +38,20 @@ Quattro problemi, tutti risolti:
 
 In più: il log di debug era hardcoded su `/tmp/whycremisi-debug.log`, percorso inesistente su Windows. Ora passa da `whycremisi::debugLogFile()` (`src/debug/DebugLog.h`) che usa la cartella temporanea di sistema.
 
+### Rami riunificati, e cosa è saltato fuori
+
+`master` e `heartbroken-claude` sono stati riuniti. Il merge ha fatto emergere due difetti che nessuno aveva visto perché **`master` non era mai stato compilato dopo i commit di branding di giugno**:
+
+- **Il plugin non compilava affatto su `master`.** Il commit `9ee5bf5` ("watermark across all project files") aveva sostituito il nome del plugin *dentro il codice*, non solo nei commenti: `getName()` in `PluginProcessor.h` restituiva una stringa letterale spezzata su due righe. Ora restituisce `JucePlugin_Name`.
+
+- **L'escaping JavaScript non funzionava.** In `WebViewBridge.cpp` un commento terminava con un backslash, che in C++ continua il commento sulla riga successiva: la `replace` che fa l'escaping delle virgolette doppie finiva dentro il commento e non veniva mai eseguita. Ogni virgoletta doppia nei messaggi verso la WebView passava non escapata.
+
+- **MSVC e i caratteri accentati.** 25 sorgenti su 57 contengono simboli non-ASCII (`©`, `™`, `—`) nei commenti e nel watermark. Clang assume UTF-8, MSVC no: senza `/utf-8` interpreta quei byte con la codepage locale e va in errore di sintassi. Il flag è stato aggiunto al `CMakeLists.txt`.
+
+### Documentazione separata dal sito
+
+Il merge aveva fatto finire nella stessa cartella `docs/` sia la landing page GitHub Pages sia la documentazione tecnica. Ora `docs/` contiene solo il sito, la documentazione sta in `Documentazione/`.
+
 ### Regole del progetto riscritte
 
 `WORKFLOW.md`, `QUICKSTART-IT.md` e `TODO.md` erano costruiti sul team a tre (Edo + Carlo/Aura + Heartbroken): branch personali, prefissi obbligatori nei commit, aree di codice vietate, review incrociata. Carlo non lavora più al progetto: quell'impianto è stato rimosso e sostituito con un flusso a una persona.
@@ -66,7 +80,7 @@ In più: il log di debug era hardcoded su `/tmp/whycremisi-debug.log`, percorso 
 
 ## Roadmap
 
-`docs/ROADMAP.md` contiene 100 step in 7 fasi.
+`Documentazione/ROADMAP.md` contiene 100 step in 7 fasi.
 
 **Completati:** 1-49, 52, 54, 55, 57, 58, 60, 63, 64, 65, 75, 76, 77
 **Aperti:** 50, 51, 53, 56, 59, 61, 62, 66-74, 78-100

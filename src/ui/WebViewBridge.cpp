@@ -29,13 +29,16 @@ juce::String WebViewBridge::escapeForJavaScript(const juce::String& input)
 {
     juce::String result = input;
     
-    // Ordine importante: prima backslash, poi gli altri
-    result = result.replace("\\", "\\\\");   // \\ -> \\\\
-    result = result.replace("\"", "\\\"");     // " -> \\"
-    result = result.replace("'", "\\'");       // ' -> \'
-    result = result.replace("\n", "\\n");     // newline -> \n
-    result = result.replace("\r", "\\r");     // carriage return -> \r
-    result = result.replace("\t", "\\t");     // tab -> \t
+    // Ordine importante: prima il backslash, poi tutto il resto.
+    // Nota: niente backslash a fine commento, altrimenti la riga seguente
+    // finisce dentro il commento stesso (era il caso della replace sulle
+    // virgolette doppie, che non veniva mai eseguita).
+    result = result.replace("\\", "\\\\");    // backslash
+    result = result.replace("\"", "\\\"");    // virgolette doppie
+    result = result.replace("'", "\\'");      // apice singolo
+    result = result.replace("\n", "\\n");     // newline
+    result = result.replace("\r", "\\r");     // carriage return
+    result = result.replace("\t", "\\t");     // tab
     
     return result;
 }

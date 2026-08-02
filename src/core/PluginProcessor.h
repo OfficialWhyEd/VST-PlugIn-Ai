@@ -51,8 +51,7 @@ public:
     bool hasEditor() const override { return true; }
 
     //==============================================================================
-    const juce::String getName() const override { return "WhyCremisi™ · A WhyEd Project
-  © 2026 WhyEd™ — @whyed.music · MIT License"; }
+    const juce::String getName() const override { return JucePlugin_Name; }
 
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }

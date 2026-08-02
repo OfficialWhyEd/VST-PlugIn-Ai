@@ -74,7 +74,7 @@ Non c'è altro. Se hai rotto qualcosa, `git revert` esiste.
 | DSP (analisi, comp, limiter, EQ) | `src/dsp/` |
 | Handler per Reaper e Ableton | `src/daw/` |
 | Interfaccia React | `webview-ui/` |
-| Documenti di prodotto e ricerca | `Research/`, `docs/product/` |
+| Documenti di prodotto e ricerca | `Research/`, `Documentazione/product/` |
 | Loghi e icone | `Research/logo/` |
 
 ---
@@ -83,4 +83,4 @@ Non c'è altro. Se hai rotto qualcosa, `git revert` esiste.
 
 - **Non riscrivere la storia già pushata** (`push --force` su `master`). Tutto il resto si aggiusta.
 - **`.secrets` è nel `.gitignore`**: le chiavi API non vanno nel repo, mai. Il plugin le tiene in memoria e le salva in `AppData/Roaming/WhyCremisi` (Windows) o `~/Library/Application Support/WhyCremisi` (macOS).
-- **Quando finisci una sessione di lavoro**, aggiorna `docs/STATUS.md` e spunta gli step in `docs/ROADMAP.md`. È l'unica documentazione che serve davvero mantenere viva.
+- **Quando finisci una sessione di lavoro**, aggiorna `Documentazione/STATUS.md` e spunta gli step in `Documentazione/ROADMAP.md`. È l'unica documentazione che serve davvero mantenere viva.

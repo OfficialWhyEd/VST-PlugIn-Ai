@@ -507,7 +507,7 @@ cmake --build build-win --config Release --parallel 4
 # into C:\Program Files\Common Files\VST3\
 ```
 
-Full instructions and troubleshooting: [`docs/BUILD-GUIDE.md`](docs/BUILD-GUIDE.md) · [`docs/QUICKSTART-IT.md`](docs/QUICKSTART-IT.md)
+Full instructions and troubleshooting: [`Documentazione/BUILD-GUIDE.md`](Documentazione/BUILD-GUIDE.md) · [`Documentazione/QUICKSTART-IT.md`](Documentazione/QUICKSTART-IT.md)
 
 The AI provider and its API key are set from the plugin's own UI — there is no config file to edit by hand.
 

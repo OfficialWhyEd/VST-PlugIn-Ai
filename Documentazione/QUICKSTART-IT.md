@@ -14,11 +14,11 @@ Un plugin (VST3 / AU / Standalone) che si carica sul master della sessione e fa 
 
 | Cosa cerchi | File |
 |-------------|------|
-| Come si lavora al progetto | `docs/WORKFLOW.md` |
-| Stato attuale | `docs/STATUS.md` |
-| I 100 step di sviluppo | `docs/ROADMAP.md` |
-| Architettura | `docs/ARCHITECTURE.md` |
-| Protocollo di comunicazione | `docs/project/protocol-json-v1.md` |
+| Come si lavora al progetto | `Documentazione/WORKFLOW.md` |
+| Stato attuale | `Documentazione/STATUS.md` |
+| I 100 step di sviluppo | `Documentazione/ROADMAP.md` |
+| Architettura | `Documentazione/ARCHITECTURE.md` |
+| Protocollo di comunicazione | `Documentazione/project/protocol-json-v1.md` |
 | Documenti di prodotto (IT + EN) | `Research/italiano/`, `Research/inglese/` |
 | Loghi e icone | `Research/logo/` |
 

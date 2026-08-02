@@ -95,6 +95,14 @@ if(WIN32)
     )
 endif()
 
+# I sorgenti sono UTF-8 e contengono caratteri accentati e simboli (©, ™, —) nei
+# commenti e nel watermark. Clang lo assume, MSVC no: senza /utf-8 interpreta i
+# byte con la codepage locale e va in errore di sintassi. Va detto sia per il
+# sorgente sia per l'esecuzione.
+if(MSVC)
+    target_compile_options(WhyCremisiVSTPlugin PRIVATE /utf-8)
+endif()
+
 # ==============================================================================
 # Source Files
 # ==============================================================================
