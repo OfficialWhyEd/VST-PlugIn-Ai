@@ -3,6 +3,8 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
+#include <array>
+#include <deque>
 #include <atomic>
 
 class Analyzer
@@ -19,6 +21,22 @@ public:
         float truePeak = 0.0f;                  // true peak in dBTP
         float rms = 0.0f;                       // raw RMS in dB
         int clippingCount = 0;                  // clipping event count
+
+        // ── Misure di mix ──────────────────────────────────────────
+        //
+        //  Le stesse che usiamo fuori dal plugin con analisi_completa.py
+        //  per giudicare un pezzo. Averle qui dentro significa che l'AI
+        //  puo' leggerle mentre suona, invece di doverle far calcolare a
+        //  uno script su un file gia' esportato.
+
+        float loudnessRange = 0.0f;   // LRA in LU: quanto respira il pezzo
+        float spectralCentroid = 0.0f; // Hz: dove sta il baricentro del suono
+        float spectralRolloff = 0.0f;  // Hz sotto cui sta l'85% dell'energia
+
+        // Energia percentuale per banda, dai bassi agli acuti. Serve a
+        // dire "manca il medio-basso" con un numero invece che a orecchio.
+        static constexpr int numBands = 10;
+        std::array<float, numBands> bandEnergy {};
 
         // Nuvola di punti per il vectorscope, gia' ruotata di 45 gradi:
         // x = side (L-R), y = mid (L+R), entrambi in -1..1. Interleaved
@@ -99,4 +117,18 @@ private:
     void detectTruePeak(const juce::AudioBuffer<float>& buffer);
     void collectScopePoints(const juce::AudioBuffer<float>& buffer);
     void initKWeightingFilters();
+
+    /** Centroide, rolloff ed energia per banda, dallo spettro appena
+        calcolato. Sono misure di forma del suono, non di livello. */
+    void computeSpectralShape();
+
+    /** Loudness range: la distanza fra i passaggi piani e quelli forti.
+        Si calcola sulla distribuzione dei valori short-term, come da
+        EBU R128: decimo percentile contro novantacinquesimo. */
+    void updateLoudnessRange();
+
+    // Storico dei valori short-term per il calcolo dell'LRA. Uno ogni
+    // secondo circa, tenuti per gli ultimi venti minuti.
+    std::deque<float> shortTermHistory;
+    int shortTermHistoryCounter = 0;
 };

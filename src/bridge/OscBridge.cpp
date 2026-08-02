@@ -2550,6 +2550,46 @@ void OscBridge::setAiEngine(AiEngine* engine)
             if (result.success)
                 result.output = modulo + (bypassed ? " bypassato" : " attivo");
         }
+        else if (call.name == "mix.analyze") {
+            auto* dsp = getDspEngine();
+            if (! dsp || ! dsp->analyzer) {
+                result.success = false;
+                result.output = "Analyzer non disponibile";
+            } else {
+                const auto& d = dsp->analyzer->getData();
+
+                nlohmann::json m;
+                m["loudness"]["integrated"] = d.integratedLoudness;
+                m["loudness"]["shortTerm"]  = d.shortTermLoudness;
+                m["loudness"]["momentary"]  = d.momentaryLoudness;
+                m["loudness"]["range"]      = d.loudnessRange;
+                m["truePeak"]      = d.truePeak;
+                m["rms"]           = d.rms;
+                m["crestFactor"]   = d.truePeak - d.rms;
+                m["correlation"]   = d.corrMono;
+                m["clippingCount"] = d.clippingCount;
+                m["spectralCentroid"] = d.spectralCentroid;
+                m["spectralRolloff"]  = d.spectralRolloff;
+
+                nlohmann::json bande = nlohmann::json::array();
+                for (int b = 0; b < Analyzer::FFTData::numBands; ++b)
+                    bande.push_back (d.bandEnergy[(size_t) b]);
+                m["bandEnergyPercent"] = bande;
+
+                // I riferimenti viaggiano insieme alle misure: senza, il
+                // modello dovrebbe ricordarsi a memoria cosa sia un buon
+                // valore, e su questo si sbaglia facilmente.
+                m["riferimenti"]["lufsStreaming"] = "-14 Spotify, -16 Apple; sotto -8 e' guerra del volume";
+                m["riferimenti"]["truePeak"]      = "<= -1 dBTP";
+                m["riferimenti"]["loudnessRange"] = "5-9 LU musica moderna; sotto 4 e' schiacciato";
+                m["riferimenti"]["crestFactor"]   = "14-20 dB non compresso; sotto 9 e' limitato a morte";
+                m["riferimenti"]["correlazione"]  = "> 0; sotto zero collassa in mono";
+                m["riferimenti"]["bande"]         = "dieci bande log da 20 Hz a 20 kHz, in percentuale di energia";
+
+                result.success = true;
+                result.output = m.dump();
+            }
+        }
         else if (call.name == "dsp.getState") {
             auto* dsp = getDspEngine();
             if (! dsp) {

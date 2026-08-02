@@ -102,6 +102,16 @@ void ToolRegistry::registerBuiltinTools()
         {"bypassed", "boolean", "True lo esclude, false lo attiva", true}
     }});
 
+    registerTool({"mix.analyze",
+        "Fotografia completa del mix in questo momento: loudness (LUFS "
+        "integrato, short-term, momentaneo), true peak, RMS, crest factor, "
+        "loudness range, correlazione di fase, centroide e rolloff "
+        "spettrale, energia per dieci bande, conteggio dei clipping. "
+        "Chiamalo quando l'utente chiede un giudizio sul mix, quando dice "
+        "che qualcosa non va senza saper dire cosa, o prima di proporre "
+        "una lavorazione: sono le stesse misure su cui si giudica un pezzo "
+        "fuori dal DAW, ma prese sul suono che sta passando adesso.", {}});
+
     registerTool({"dsp.getState",
         "Riporta com'e' messa adesso la catena interna: quali moduli sono "
         "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "

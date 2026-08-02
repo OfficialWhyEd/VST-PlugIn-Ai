@@ -1,5 +1,6 @@
 #include "Analyzer.h"
 #include <cmath>
+#include <algorithm>
 
 Analyzer::Analyzer() : fft(11)  // 2048-point FFT
 {
@@ -85,6 +86,101 @@ void Analyzer::prepare(double sr, int)
     clipCount.store(0);
 
     newData = false;
+}
+
+void Analyzer::computeSpectralShape()
+{
+    const int bins = fftSize / 2;
+    if (bins <= 0 || (int) currentData.magnitudes.size() < bins) return;
+
+    const float binHz = (float) (sampleRate / fftSize);
+
+    // Centroide: media delle frequenze pesata sull'energia. Un valore alto
+    // dice suono brillante, uno basso suono scuro. E' la misura piu'
+    // compatta per descrivere il timbro con un numero solo.
+    double energiaTotale = 0.0, sommaPesata = 0.0;
+    for (int i = 1; i < bins; ++i)
+    {
+        const double e = (double) currentData.magnitudes[i] * currentData.magnitudes[i];
+        energiaTotale += e;
+        sommaPesata   += e * (i * binHz);
+    }
+
+    if (energiaTotale < 1e-12)
+    {
+        currentData.spectralCentroid = 0.0f;
+        currentData.spectralRolloff = 0.0f;
+        currentData.bandEnergy.fill (0.0f);
+        return;
+    }
+
+    currentData.spectralCentroid = (float) (sommaPesata / energiaTotale);
+
+    // Rolloff: la frequenza sotto cui sta l'85% dell'energia. Dice fin dove
+    // arriva davvero il contenuto, al netto della coda in alto.
+    const double soglia = energiaTotale * 0.85;
+    double accumulata = 0.0;
+    currentData.spectralRolloff = (float) (bins * binHz);
+    for (int i = 1; i < bins; ++i)
+    {
+        accumulata += (double) currentData.magnitudes[i] * currentData.magnitudes[i];
+        if (accumulata >= soglia)
+        {
+            currentData.spectralRolloff = i * binHz;
+            break;
+        }
+    }
+
+    // Dieci bande a spaziatura logaritmica, da 20 Hz a 20 kHz: e' come
+    // l'orecchio divide lo spettro, mentre bande a spaziatura lineare
+    // metterebbero nove decimi dei numeri sopra i 2 kHz.
+    static constexpr float bandaMin = 20.0f, bandaMax = 20000.0f;
+    const float passo = std::log10 (bandaMax / bandaMin) / FFTData::numBands;
+
+    std::array<double, FFTData::numBands> perBanda {};
+    for (int i = 1; i < bins; ++i)
+    {
+        const float f = i * binHz;
+        if (f < bandaMin || f > bandaMax) continue;
+        int b = (int) (std::log10 (f / bandaMin) / passo);
+        b = juce::jlimit (0, FFTData::numBands - 1, b);
+        perBanda[(size_t) b] += (double) currentData.magnitudes[i] * currentData.magnitudes[i];
+    }
+
+    for (int b = 0; b < FFTData::numBands; ++b)
+        currentData.bandEnergy[(size_t) b] = (float) (perBanda[(size_t) b] / energiaTotale * 100.0);
+}
+
+void Analyzer::updateLoudnessRange()
+{
+    // Un campione al secondo circa: l'LRA descrive l'andamento del brano,
+    // non le variazioni istantanee, e tenerne di piu' non cambia il numero.
+    if (++shortTermHistoryCounter < 20) return;
+    shortTermHistoryCounter = 0;
+
+    const float st = currentData.shortTermLoudness;
+    // Sotto questa soglia c'e' silenzio o quasi: includerlo gonfierebbe
+    // l'LRA facendo sembrare dinamico un pezzo che semplicemente ha delle
+    // pause.
+    if (st < -70.0f) return;
+
+    shortTermHistory.push_back (st);
+    if (shortTermHistory.size() > 1200)   // circa venti minuti
+        shortTermHistory.pop_front();
+
+    if (shortTermHistory.size() < 10) return;
+
+    std::vector<float> ordinati (shortTermHistory.begin(), shortTermHistory.end());
+    std::sort (ordinati.begin(), ordinati.end());
+
+    const auto percentile = [&ordinati](double p) {
+        const size_t idx = (size_t) juce::jlimit<double> (0.0, ordinati.size() - 1.0,
+                                                          p * (ordinati.size() - 1));
+        return ordinati[idx];
+    };
+
+    // EBU R128: distanza fra decimo e novantacinquesimo percentile.
+    currentData.loudnessRange = percentile (0.95) - percentile (0.10);
 }
 
 void Analyzer::collectScopePoints (const juce::AudioBuffer<float>& buffer)
@@ -189,6 +285,9 @@ void Analyzer::process(const juce::AudioBuffer<float>& buffer)
                     currentData.scopePoints[i * 2 + 1] = scopeBuffer[src * 2 + 1];
                 }
             }
+
+            computeSpectralShape();
+            updateLoudnessRange();
 
             fifoIndex = 0;
             newData = true;
