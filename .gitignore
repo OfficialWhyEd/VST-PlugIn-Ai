@@ -40,9 +40,15 @@ tmp/
 temp/
 .cache/
 .secrets
-.secrets
 
 # LLM Wiki (local only)
 OpenClaw-VST-Wiki/
+
+# Additional build directories
+build-rel/
+build-*/
+
+# Node
 node_modules/
 Research/logo/node_modules/
+webview-ui/dist/

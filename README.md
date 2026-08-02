@@ -12,11 +12,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/JUCE-7-FF0000?style=flat-square" />
+  <img src="https://img.shields.io/badge/JUCE-8-FF0000?style=flat-square" />
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white" />
   <img src="https://img.shields.io/badge/React-WebView_UI-61DAFB?style=flat-square&logo=react&logoColor=black" />
   <img src="https://img.shields.io/badge/VST3%20%7C%20AU%20%7C%20Standalone-plugin-7B00D4?style=flat-square" />
-  <img src="https://img.shields.io/badge/CMake-3.22+-064F8C?style=flat-square&logo=cmake&logoColor=white" />
+  <img src="https://img.shields.io/badge/CMake-3.20+-064F8C?style=flat-square&logo=cmake&logoColor=white" />
 </p>
 
 <p align="center">
@@ -477,24 +477,39 @@ The VST3 SDK extension architecture (note expression, MIDI 2.0, MPE) is supporte
 
 ## Quick start
 
-**Prerequisites:** CMake ≥ 3.22 · Xcode Command Line Tools · [JUCE 7](https://juce.com/get-juce/)
+**Prerequisites:** CMake ≥ 3.20 · Node ≥ 20 · [JUCE 8](https://juce.com/get-juce/) · Xcode Command Line Tools (macOS) or Visual Studio Build Tools (Windows)
 
 ```bash
-git clone https://github.com/OfficialWhyEd/WhyCremisi
-cd WhyCremisi
+git clone https://github.com/OfficialWhyEd/VST-PlugIn-Ai
+cd VST-PlugIn-Ai
 
-# Build
-cmake -B build -DJUCE_ROOT=/path/to/JUCE
+# Build the React UI first — it gets embedded into the plugin bundle
+cd webview-ui && npm install && npm run build && cd ..
+```
+
+**macOS**
+```bash
+export JUCE_ROOT=/path/to/JUCE
+cmake -B build
 cmake --build build --config Release
 
-# Install VST3
-cp -r build/WhyCremisi_artefacts/VST3/WhyCremisi.vst3 \
+cp -r build/WhyCremisiVSTPlugin_artefacts/Release/VST3/WhyCremisi.vst3 \
       ~/Library/Audio/Plug-Ins/VST3/
-
-# Configure AI provider
-cp config.example.json config.json
-# → set your preferred provider + key in config.json
 ```
+
+**Windows** — also needs the `Microsoft.Web.WebView2` NuGet package, which JUCE links for the WebView:
+```powershell
+$env:JUCE_ROOT = "C:\path\to\JUCE"
+cmake -S . -B build-win -G "Visual Studio 18 2026" -A x64
+cmake --build build-win --config Release --parallel 4
+
+# then copy build-win\WhyCremisiVSTPlugin_artefacts\Release\VST3\WhyCremisi.vst3
+# into C:\Program Files\Common Files\VST3\
+```
+
+Full instructions and troubleshooting: [`docs/BUILD-GUIDE.md`](docs/BUILD-GUIDE.md) · [`docs/QUICKSTART-IT.md`](docs/QUICKSTART-IT.md)
+
+The AI provider and its API key are set from the plugin's own UI — there is no config file to edit by hand.
 
 Load WhyCremisi on the **master channel** in your DAW. Open the plugin UI. The bridge starts automatically — OSC on `:9000`, WebSocket on `:8080`, React connects and sends `plugin.init`.
 
@@ -584,7 +599,7 @@ If WhyCremisi made you go "wait, this is actually insane" — that's the right r
   <strong>WhyCremisi™</strong> · A <strong>WhyEd™</strong> Project
   <br/>
   © 2026 <a href="https://instagram.com/whyed.music">@whyed</a>
-  &nbsp;·&nbsp; macOS · Windows · Linux · JUCE 7 · MIT License
+  &nbsp;·&nbsp; macOS · Windows · Linux · JUCE 8 · MIT License
   &nbsp;·&nbsp; <a href="https://officialwhyed.github.io/WhyCremisi">Website</a>
   &nbsp;·&nbsp; <a href="https://discord.gg/cQQckfnN">Discord</a>
   &nbsp;·&nbsp; <a href="https://instagram.com/whyed.music">Instagram</a>

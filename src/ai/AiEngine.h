@@ -3,10 +3,10 @@
   AiEngine.h
   WhyCremisi™ · A WhyEd Project
   © 2026 WhyEd™ — @whyed.music · MIT License
-  AI Engine for multi-provider support
-  
-  Phase 2 IN PROGRESS: Ollama local implemented
-  Phase 3: Will add Gemini, Anthropic, OpenAI, OpenRouter, Groq
+  AI Engine multi-provider
+
+  Provider supportati: Ollama, OpenAI, Gemini, Anthropic, OpenRouter, Groq.
+  Function calling via ToolRegistry, gestione del contesto via ContextManager.
   ==============================================================================
 */
 
@@ -16,19 +16,29 @@
 #include <juce_events/juce_events.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <memory>
+#include <vector>
+#include <map>
+#include <mutex>
+
+class AIProvider;
+class ToolRegistry;
+class ContextManager;
+
+enum class AiPersonalityStyle {
+    Analytical,
+    Consultative,
+    Direct,
+    Creative,
+    Warm
+};
 
 class AiEngine
 {
 public:
-    enum class Provider { 
-        Ollama,      // Local LLM (default)
-        Gemini,      // Google Gemini
-        Anthropic,   // Claude
-        OpenAI,      // GPT
-        OpenRouter,  // Multi-provider
-        Groq         // Fast inference
+    enum class Provider {
+        Ollama, Gemini, Anthropic, OpenAI, OpenRouter, Groq
     };
-    
+
     struct Config {
         Provider provider = Provider::Ollama;
         juce::String apiKey;
@@ -37,78 +47,133 @@ public:
         int timeoutMs = 30000;
         int maxTokens = 2048;
         float temperature = 0.7f;
+        AiPersonalityStyle personalityStyle = AiPersonalityStyle::Analytical;
     };
-    
+
+    struct AiAction {
+        juce::String widgetId;
+        float value = 0.0f;
+        float previousValue = 0.0f;
+        juce::String description;
+    };
+
+    struct StructuredResponse {
+        juce::String text;
+        std::vector<AiAction> actions;
+        bool success = false;
+        juce::String rawToolResponse;
+    };
+
+    struct WidgetInfo {
+        juce::String widgetId;
+        juce::String label;
+        float min = 0.0f;
+        float max = 1.0f;
+        float currentValue = 0.0f;
+        juce::String unit;
+    };
+
     AiEngine();
     ~AiEngine();
-    
-    //==============================================================================
-    /** Configure the AI provider */
+
     void configure(const Config& config);
-    
-    //==============================================================================
-    /** Update partial config (preserves other settings) */
     void updateConfig(std::function<void(Config&)> updater);
-    
-    //==============================================================================
-    /** Get current config */
     const Config& getConfig() const { return config; }
-    
-    //==============================================================================
-    /** Send a prompt and get response (synchronous - blocks!) */
+
     juce::String sendPrompt(const juce::String& prompt);
-    
-    //==============================================================================
-    /** Send a prompt asynchronously (non-blocking) */
+
     using ResponseCallback = std::function<void(const juce::String& response, bool success)>;
     void sendPromptAsync(const juce::String& prompt, ResponseCallback callback);
-    
-    //==============================================================================
-    /** Get available models for current provider */
+
+    StructuredResponse sendPromptStructured(const juce::String& prompt);
+
+    using StructuredCallback = std::function<void(const StructuredResponse& response)>;
+    void sendPromptAsyncStructured(const juce::String& prompt, StructuredCallback callback);
+
+    using StreamCallback = std::function<void(const juce::String& chunk, bool isDone)>;
+    void sendPromptStreaming(const juce::String& prompt, StreamCallback onChunk);
+    void sendStructuredStreaming(const juce::String& prompt, StreamCallback onChunk,
+                                  std::function<void(const StructuredResponse&)> onComplete);
+    void abortRequest();
+
     juce::StringArray getAvailableModels();
-    
-    //==============================================================================
-    /** Test connection to provider */
     bool testConnection();
-    
-    //==============================================================================
-    /** Get last error message */
     juce::String getLastError() const { return lastError; }
-    
-    //==============================================================================
-    /** Check if configured */
     bool isConfigured() const { return configured; }
-    
-    //==============================================================================
-    /** Get current provider name */
     juce::String getProviderName() const;
-    
-    //==============================================================================
-    /** Get current model name */
     juce::String getModelName() const { return config.model; }
+
+    void setWidgetList(const std::vector<WidgetInfo>& widgets);
+    void setContext(const juce::String& meterData, const juce::String& transportData);
+    void setPersonalityContext(const juce::String& context);
+    void setAgentWorkspaceContext(const juce::String& context);
+    void setPersonalityStyle(AiPersonalityStyle style);
+    void setDawName(const juce::String& name) { dawName = name; }
+
+    juce::String buildSystemPrompt() const;
+
+    using ActionCallback = std::function<void(const AiAction& action)>;
+    void setActionCallback(ActionCallback cb) { actionCallback = cb; }
+
+    static juce::StringArray getPersonalityStyleNames();
+    static juce::String getPersonalityStyleName(AiPersonalityStyle style);
+    static juce::String getPersonalityStyleDescription(AiPersonalityStyle style);
+
+    // Tool integration
+    void setToolsEnabled(bool enabled) { toolsEnabled = enabled; }
+    juce::String buildToolsJson() const;
+    using ToolExecutorFn = std::function<struct ToolResult(const struct ToolCall&)>;
+    void setToolExecutor(ToolExecutorFn exec);
+
+    // Context management
+    void addConversationMessage(const juce::String& role, const juce::String& content);
+    void clearConversationContext();
+    juce::String buildContextMessagesJson() const;
+
+    // Session persistence
+    bool saveSessionState();
+    bool loadSessionState();
+    static juce::File getSessionFilePath();
+
+    // Config validation
+    struct ConfigValidation {
+        bool valid = true;
+        juce::StringArray warnings;
+        juce::StringArray errors;
+    };
+    ConfigValidation validateConfig() const;
+    juce::String getConfigSummary() const;
+
+    // Public for use by OscBridge streaming path
+    StructuredResponse parseStructuredResponse(const juce::String& raw) const;
+    void finalizeStreamingResponse(const juce::String& prompt, const juce::String& response);
 
 private:
     Config config;
     bool configured = false;
-    juce::String lastError;
-    
-    //==============================================================================
-    /** HTTP helper for making requests */
-    juce::String makeHttpRequest(const juce::String& url,
-                                  const juce::String& method,
-                                  const juce::String& jsonBody,
-                                  int timeoutMs,
-                                  const juce::String& extraHeaders = {});
-    
-    //==============================================================================
-    /** Internal implementations for each provider */
-    juce::String callOllama(const juce::String& prompt);
-    juce::String callGemini(const juce::String& prompt);
-    juce::String callAnthropic(const juce::String& prompt);
-    juce::String callOpenAI(const juce::String& prompt);
-    juce::String callOpenRouter(const juce::String& prompt);
-    juce::String callGroq(const juce::String& prompt);
-    juce::String callOpenAICompatible(const juce::String& url, const juce::String& prompt);
-    
+    bool toolsEnabled = true;
+    mutable juce::String lastError;
+
+    std::vector<WidgetInfo> widgets;
+    juce::String lastMeterData;
+    juce::String lastTransportData;
+    juce::String personalityContext;
+    juce::String agentWorkspaceContext;
+    juce::String dawName;
+    ActionCallback actionCallback;
+
+    std::unique_ptr<AIProvider> currentProvider;
+    std::unique_ptr<AIProvider> createProvider(Provider type);
+    void ensureProvider();
+    void syncProviderConfig();
+
+    std::unique_ptr<ToolRegistry> toolRegistry;
+    std::unique_ptr<ContextManager> contextManager;
+
+    juce::String buildPersonalityPrefix() const;
+    void syncWidgetTools();
+
+    mutable std::mutex engineMutex;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AiEngine)
 };

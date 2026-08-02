@@ -10,7 +10,85 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
-WhyCremisiBrowser::WhyCremisiBrowser() {}
+static juce::String getMimeType (const juce::String& ext)
+{
+    if (ext == ".html") return "text/html";
+    if (ext == ".js")   return "application/javascript";
+    if (ext == ".css")  return "text/css";
+    if (ext == ".png")  return "image/png";
+    if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".svg")  return "image/svg+xml";
+    if (ext == ".ico")  return "image/x-icon";
+    if (ext == ".json") return "application/json";
+    if (ext == ".woff2") return "font/woff2";
+    if (ext == ".woff")  return "font/woff";
+    return "application/octet-stream";
+}
+
+// Dove sta il bundle React, a seconda di formato e piattaforma.
+// macOS: sempre dentro il bundle (.vst3/.component/.app) in Contents/Resources.
+// Windows: currentApplicationFile è l'eseguibile dell'HOST, non il plugin — si parte
+//          dal modulo caricato (currentExecutableFile) e si risale al bundle VST3.
+static juce::File findUIDirectory()
+{
+    juce::Array<juce::File> candidates;
+
+    const auto executable = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+    const auto application = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
+
+    // Bundle macOS (VST3 / AU / Standalone .app)
+    candidates.add (application.getChildFile ("Contents/Resources/webview-ui"));
+
+    // VST3 Windows: <plugin>.vst3/Contents/x86_64-win/<plugin>.vst3 → risali a Contents
+    candidates.add (executable.getParentDirectory().getParentDirectory()
+                              .getChildFile ("Resources/webview-ui"));
+
+    // Standalone e build non impacchettate: accanto all'eseguibile
+    candidates.add (executable.getParentDirectory().getChildFile ("webview-ui"));
+    candidates.add (application.getParentDirectory().getChildFile ("webview-ui"));
+
+    for (const auto& dir : candidates)
+        if (dir.getChildFile ("index.html").existsAsFile())
+            return dir;
+
+    return {};
+}
+
+WhyCremisiBrowser::WhyCremisiBrowser()
+    : juce::WebBrowserComponent (juce::WebBrowserComponent::Options{}
+                                      .withKeepPageLoadedWhenBrowserIsHidden()
+                                      .withNativeIntegrationEnabled()
+                                      .withResourceProvider ([](const juce::String& url) -> std::optional<juce::WebBrowserComponent::Resource>
+                                      {
+                                          auto distDir = findUIDirectory();
+
+                                          if (distDir == juce::File{})
+                                              return std::nullopt;
+
+                                          auto relativePath = url.isEmpty() ? "index.html"
+                                                                             : url.trimCharactersAtStart ("/");
+                                          auto file = distDir.getChildFile (relativePath);
+
+                                          if (! file.existsAsFile())
+                                              file = distDir.getChildFile ("index.html");
+
+                                          if (! file.existsAsFile())
+                                              return std::nullopt;
+
+                                          juce::MemoryBlock data;
+                                          if (! file.loadFileAsData (data))
+                                              return std::nullopt;
+                                          auto mime = getMimeType (file.getFileExtension());
+
+                                          std::vector<std::byte> bytes (data.getSize());
+                                          std::memcpy (bytes.data(), data.getData(), data.getSize());
+                                          juce::WebBrowserComponent::Resource res;
+                                          res.data     = std::move (bytes);
+                                          res.mimeType = mime;
+                                          return res;
+                                      })
+                                      .withBackend (juce::WebBrowserComponent::Options::Backend::defaultBackend))
+{}
 
 bool WhyCremisiBrowser::pageAboutToLoad(const juce::String& url)
 {
@@ -27,10 +105,9 @@ void WhyCremisiBrowser::pageFinishedLoading(const juce::String& url)
 WhyCremisiProcessorEditor::WhyCremisiProcessorEditor(WhyCremisiProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    setSize(800, 600);
-    // Usa SEMPRE la UI nativa — WebView non funziona in VST embedded (vedi architettura-ponte.md)
-    setupFallbackUI();
-    DBG("[WhyCremisi] Editor avviato con UI nativa JUCE");
+    setSize(1100, 820);
+    setupWebView();
+    DBG("[WhyCremisi] Editor avviato con WebView integrata");
 }
 
 WhyCremisiProcessorEditor::~WhyCremisiProcessorEditor()
@@ -45,8 +122,29 @@ WhyCremisiProcessorEditor::~WhyCremisiProcessorEditor()
 }
 
 //==============================================================================
-void WhyCremisiProcessorEditor::loadUI()  { setupFallbackUI(); }
-void WhyCremisiProcessorEditor::setupWebView() {}  // Disabilitata — vedi STATUS.md
+void WhyCremisiProcessorEditor::loadUI()  { setupWebView(); }
+
+void WhyCremisiProcessorEditor::setupWebView()
+{
+    webView = std::make_unique<WhyCremisiBrowser>();
+    
+    // Configura il ponte tra JS e C++
+    webViewBridge.initialize(webView.get());
+    webViewBridge.setFrontendMessageCallback([this](const nlohmann::json& msg) {
+        handleFrontendMessage(msg);
+    });
+
+    // Collega l'intercettazione dei messaggi via URL
+    webView->onPageAboutToLoad = [this](const juce::String& url) {
+        return !webViewBridge.handleMessageFromURL(url); // Ritorna false se consumato (non naviga)
+    };
+
+    // Carica l'URL (Localhost per sviluppo, file locale per produzione)
+    juce::String url = getUIURL();
+    webView->goToURL(url);
+    
+    addAndMakeVisible(webView.get());
+}
 
 void WhyCremisiProcessorEditor::setupFallbackUI()
 {
@@ -118,7 +216,19 @@ void WhyCremisiProcessorEditor::setupFallbackUI()
 
 juce::String WhyCremisiProcessorEditor::getUIURL() const
 {
-    return "http://127.0.0.1:9000";
+    // Dev server override: se Vite gira su 5173 o 4173 usalo (hot reload)
+    auto tryPort = [](int port) -> bool {
+        juce::StreamingSocket sock;
+        bool ok = sock.connect ("127.0.0.1", port, 300);
+        sock.close();
+        return ok;
+    };
+
+    if (tryPort (5173)) return "http://localhost:5173";
+    if (tryPort (4173)) return "http://localhost:4173";
+
+    // Fallback: resource provider dal bundle (sempre disponibile)
+    return juce::WebBrowserComponent::getResourceProviderRoot();
 }
 
 //==============================================================================
@@ -172,22 +282,14 @@ void WhyCremisiProcessorEditor::paint(juce::Graphics& g)
 
 void WhyCremisiProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
+    if (webView)
+        webView->setBounds(getLocalBounds());
+}
 
-    // Header
-    titleLabel.setBounds(area.removeFromTop(35).withTrimmedTop(5));
-    subtitleLabel.setBounds(area.removeFromTop(18));
-    area.removeFromTop(10);
-
-    // Sliders
-    int sliderW = 110, sliderH = 120;
-    int startX = (getWidth() - sliderW * 2 - 40) / 2;
-    int startY = area.getY() + 20;
-    gainSlider1.setBounds(startX, startY, sliderW, sliderH);
-    gainSlider2.setBounds(startX + sliderW + 40, startY, sliderW, sliderH);
-
-    // AI area
-    int aiY = startY + sliderH + 40;
-    aiPrompt.setBounds(50, aiY, getWidth() - 160, 30);
-    aiButton.setBounds(getWidth() - 100, aiY, 80, 30);
+void WhyCremisiProcessorEditor::parentHierarchyChanged()
+{
+    // Quando il componente viene attaccato alla finestra nativa, forza il resize del WebView.
+    // Senza questo, WKWebView rimane a 100x100 (la dimensione iniziale del WKWebViewImpl).
+    if (webView && getWidth() > 0)
+        webView->setBounds(getLocalBounds());
 }

@@ -33,12 +33,18 @@ const PUPILS = {
   advisory: { lx: 35, ly: 40, rx: 67, ry: 38 }
 }
 
-export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
+export function BotFace({ state = 'idle', className = 'w-16 h-16', personality = null, audioLevel = 0 }) {
   const prevState = useRef(state)
   const [pulseKey, setPulseKey] = useState(0)
   const [glitchActive, setGlitchActive] = useState(false)
   const [burstActive, setBurstActive] = useState(false)
   const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 })
+  const [smoothAudio, setSmoothAudio] = useState(0)
+
+  // Smooth audio level for natural mouth movement
+  useEffect(() => {
+    setSmoothAudio(prev => prev * 0.55 + Math.min(1, Math.max(0, audioLevel)) * 0.45)
+  }, [audioLevel])
 
   const color = STATE_COLORS[state] || STATE_COLORS.idle
   const paths = PATHS[state] || PATHS.idle
@@ -66,15 +72,27 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
     return () => clearInterval(id)
   }, [state])
 
-  const mouthAnimate = state === 'typing'
-    ? [paths.m, 'M 40 64 Q 50 70 60 64', paths.m]
-    : state === 'listening' ? [paths.m, 'M 34 65 Q 50 65 66 65', paths.m]
-    : state === 'loading'   ? [paths.m, 'M 41 66 Q 50 66 59 66', paths.m]
-    : paths.m
+  // Audio-reactive mouth: control point Y opens downward proportional to level
+  // Closed: Q 50 65  →  Wide open: Q 50 86
+  // Upper lip rises slightly when open for oval shape
+  const audioMouthOpen = smoothAudio > 0.04
+  const ctrlY = 65 + smoothAudio * 21        // 65 → 86
+  const startY = 65 - smoothAudio * 3        // 65 → 62 (lips spread)
+  const audioMouthPath = `M 38 ${startY.toFixed(1)} Q 50 ${ctrlY.toFixed(1)} 62 ${startY.toFixed(1)}`
 
-  const mouthTrans = (state === 'typing' || state === 'listening' || state === 'loading')
-    ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
-    : { duration: 0.5, type: 'spring', bounce: 0.45 }
+  const mouthAnimate = audioMouthOpen
+    ? audioMouthPath
+    : state === 'typing'
+      ? [paths.m, 'M 40 64 Q 50 70 60 64', paths.m]
+      : state === 'listening' ? [paths.m, 'M 34 65 Q 50 65 66 65', paths.m]
+      : state === 'loading'   ? [paths.m, 'M 41 66 Q 50 66 59 66', paths.m]
+      : paths.m
+
+  const mouthTrans = audioMouthOpen
+    ? { duration: 0.06, ease: 'linear' }
+    : (state === 'typing' || state === 'listening' || state === 'loading')
+      ? { repeat: Infinity, duration: 0.55, ease: 'easeInOut' }
+      : { duration: 0.5, type: 'spring', bounce: 0.45 }
 
   const eyeL = state === 'idle' ? [paths.l, paths.l, 'M 26 44 Q 35 44 44 44', paths.l] : paths.l
   const eyeR = state === 'idle' ? [paths.r, paths.r, 'M 56 44 Q 65 44 74 44', paths.r] : paths.r
@@ -104,7 +122,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
       animate={{ ...bobAnim, ...glitchAnim }}
       transition={bobTrans}
     >
-      {/* State-change pulse ring */}
       <AnimatePresence mode="sync">
         <motion.div
           key={`ring-${pulseKey}`}
@@ -116,7 +133,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
         />
       </AnimatePresence>
 
-      {/* Success burst ring */}
       <AnimatePresence>
         {burstActive && (
           <motion.div
@@ -130,7 +146,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
         )}
       </AnimatePresence>
 
-      {/* Main SVG face */}
       <motion.svg
         viewBox="0 0 100 100"
         className="w-full h-full"
@@ -144,13 +159,11 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           state === 'thinking' ? { repeat:Infinity, duration:2.2, ease:'easeInOut' } : {}
         }
       >
-        {/* Outer breathing corona */}
         <motion.circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="0.4"
           animate={{ opacity: [glowOp*0.3, glowOp*0.65, glowOp*0.3] }}
           transition={{ repeat:Infinity, duration:3.2, ease:'easeInOut' }}
         />
 
-        {/* Loading scan line */}
         {state === 'loading' && (
           <motion.rect x="8" width="84" height="1" fill="currentColor" fillOpacity="0.3"
             animate={{ y: [15, 82, 15] }}
@@ -158,14 +171,12 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         )}
 
-        {/* Eyes and mouth */}
         <motion.g stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" fill="none">
           <motion.path d={paths.l} animate={{ d: eyeL }} transition={eyeTrans} />
           <motion.path d={paths.r} animate={{ d: eyeR }} transition={eyeTrans} />
           <motion.path d={paths.m} animate={{ d: mouthAnimate }} transition={mouthTrans} />
         </motion.g>
 
-        {/* Pupils */}
         <motion.circle r="2.8" fill="currentColor"
           animate={{ cx: pupils.lx + pupilOffset.x, cy: pupils.ly + pupilOffset.y, opacity: state==='loading'?0:0.9 }}
           transition={{ duration:1.4, ease:'easeInOut' }}
@@ -175,7 +186,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           transition={{ duration:1.4, ease:'easeInOut' }}
         />
 
-        {/* Thinking dots */}
         {state === 'thinking' && [0,1,2].map(i => (
           <motion.circle key={i} cx={43+i*7} cy="82" r="2.2" fill="currentColor"
             animate={{ opacity:[0.2,1,0.2], scale:[0.7,1.3,0.7] }}
@@ -183,7 +193,20 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         ))}
 
-        {/* Advisory raised right eyebrow */}
+        {/* Audio-reactive sound waves around head */}
+        {smoothAudio > 0.04 && [1,2,3].map(i => (
+          <motion.circle key={`wave-${i}`}
+            cx="50" cy="50"
+            r={46 + i * 8}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={Math.max(0.3, smoothAudio * 1.8 / i)}
+            strokeOpacity={Math.max(0, smoothAudio * 0.5 / i)}
+            animate={{ r: [46 + i*8, 52 + i*10, 46 + i*8], strokeOpacity: [smoothAudio*0.5/i, 0, 0] }}
+            transition={{ duration: 0.5, ease: 'easeOut', repeat: Infinity, repeatDelay: 0.1 * i }}
+          />
+        ))}
+
         {state === 'advisory' && (
           <motion.line x1="57" y1="29" x2="73" y2="26"
             stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
@@ -191,7 +214,6 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           />
         )}
 
-        {/* Sad teardrops */}
         {state === 'sad' && (
           <>
             <motion.circle cx="31" r="2" fill="currentColor" fillOpacity="0.5"
@@ -205,6 +227,25 @@ export function BotFace({ state = 'idle', className = 'w-16 h-16' }) {
           </>
         )}
       </motion.svg>
+
+      {/* ── Personality info badge ── */}
+      {personality && personality.style && personality.style !== 'warm' && (
+        <motion.div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-[1px] text-[6px] font-bold uppercase tracking-widest"
+          style={{
+            backgroundColor: personality.style === 'direct' ? '#DC143C' :
+              personality.style === 'consultative' ? '#FFB000' :
+              personality.style === 'analytical' ? '#00E5FF' :
+              personality.style === 'creative' ? '#AA44FF' : '#888',
+            color: '#000'
+          }}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {personality.style}
+        </motion.div>
+      )}
     </motion.div>
   )
 }

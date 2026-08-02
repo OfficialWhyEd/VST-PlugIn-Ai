@@ -10,6 +10,7 @@
 */
 
 #include "WebSocketServer.h"
+#include "../debug/DebugLog.h"
 #include <sstream>
 #include <iomanip>
 #include <cstring>
@@ -44,17 +45,31 @@ bool WebSocketServer::start()
     if (running.load())
         return true;
 
-    // Create server socket using JUCE's server pattern: createListener + waitForNextConnection
-    serverSocket = std::make_unique<juce::StreamingSocket>();
-
-    if (!serverSocket->createListener(port))
+    int retries = 3;
+    int retryDelay = 500;
+    for (int attempt = 0; attempt <= retries; ++attempt)
     {
-        DBG("[WebSocketServer] ERROR: Cannot create listener on port " + juce::String(port));
-        return false;
+        serverSocket = std::make_unique<juce::StreamingSocket>();
+
+        if (serverSocket->createListener(port))
+            break;
+
+        serverSocket.reset();
+        juce::String msg = "[WebSocketServer] Cannot create listener on port " + juce::String(port)
+                           + " (attempt " + juce::String(attempt + 1) + "/" + juce::String(retries + 1) + ")";
+        DBG(msg);
+        fprintf(stderr, "%s\n", msg.toRawUTF8());
+
+        if (attempt < retries)
+            juce::Thread::sleep(retryDelay * (attempt + 1));
+        else
+            return false;
     }
 
     running.store(true);
-    DBG("[WebSocketServer] Listening on port " + juce::String(port) + ", starting accept thread");
+    juce::String msg = "[WebSocketServer] Listening on port " + juce::String(port) + ", starting accept thread";
+    DBG(msg);
+    fprintf(stderr, "%s\n", msg.toRawUTF8());
 
     // Start accept thread
     acceptThread = std::make_unique<std::thread>([this]() { acceptLoop(); });
@@ -82,15 +97,22 @@ void WebSocketServer::stop()
         acceptThread.reset();
     }
 
-    // Close all client connections
+    // Close all client connections and join their threads
     {
         std::lock_guard<std::mutex> lock(clientsMutex);
         for (auto& client : clients)
         {
             if (client->connected.load())
-            {
                 closeConnection(client.get());
-            }
+        }
+    }
+    // Join threads outside the lock to avoid deadlock with clientLoop
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        for (auto& client : clients)
+        {
+            if (client->thread && client->thread->joinable())
+                client->thread->join();
         }
         clients.clear();
     }
@@ -99,14 +121,16 @@ void WebSocketServer::stop()
     DBG("[WebSocketServer] Stopped");
 }
 
-//==============================================================================
-void WebSocketServer::acceptLoop()
-{
+    //==============================================================================
+    void WebSocketServer::acceptLoop()
     {
-        juce::File logFile("/tmp/whycremisi-debug.log");
-        juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
-        logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
-    }
+#ifndef NDEBUG
+        {
+            juce::File logFile = whycremisi::debugLogFile();
+            juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
+            logFile.appendText("[" + timestamp + "] WebSocketServer accept loop started\n");
+        }
+#endif
 
 
     while (running.load())
@@ -144,50 +168,59 @@ void WebSocketServer::acceptLoop()
             }
         }
 
+        // Clean up disconnected clients every iteration
+        cleanupClients();
     }
 
     DBG("[WebSocketServer] Accept loop ended");
 }
 
-//==============================================================================
-void WebSocketServer::clientLoop(ClientInfo* client)
-{
-    juce::File logFile("/tmp/whycremisi-debug.log");
-    auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
-
-    logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
-
-    // First: perform WebSocket handshake
-    if (!performHandshake(client))
+    //==============================================================================
+    void WebSocketServer::clientLoop(ClientInfo* client)
     {
-        logFile.appendText("[" + ts() + "] [WS] Handshake FAILED for client " + juce::String(client->id) + "\n");
-        client->connected.store(false);
-        client->socket->close();
+#ifndef NDEBUG
+        juce::File logFile = whycremisi::debugLogFile();
+        auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
+
+        logFile.appendText("[" + ts() + "] [WS] Client " + juce::String(client->id) + " thread started\n");
+#endif
+
+        // First: perform WebSocket handshake
+        if (!performHandshake(client))
+        {
+#ifndef NDEBUG
+            logFile.appendText("[" + ts() + "] [WS] Handshake FAILED for client " + juce::String(client->id) + "\n");
+#endif
+            client->connected.store(false);
+            client->socket->close();
+            if (connectionCallback)
+                connectionCallback(client->id, false);
+
+            return;
+        }
+
+        client->handshakeComplete = true;
+#ifndef NDEBUG
+        logFile.appendText("[" + ts() + "] [WS] Handshake OK for client " + juce::String(client->id) + "\n");
+#endif
+
+        // Notify connection
         if (connectionCallback)
-            connectionCallback(client->id, false);
-        return;
-    }
-
-    client->handshakeComplete = true;
-    logFile.appendText("[" + ts() + "] [WS] Handshake OK for client " + juce::String(client->id) + "\n");
-
-    // Notify connection
-    if (connectionCallback)
-        connectionCallback(client->id, true);
+            connectionCallback(client->id, true);
 
     // Now read messages
     while (client->connected.load() && running.load())
     {
         // Read data from client
-        char buffer[8192];
-        int bytesRead = client->socket->read(buffer, sizeof(buffer), false);
+        std::vector<char> buffer(65536);
+        int bytesRead = client->socket->read(buffer.data(), static_cast<int>(buffer.size()), false);
 
         if (bytesRead > 0)
         {
             // Append to receive buffer
             client->receiveBuffer.insert(client->receiveBuffer.end(),
-                                         reinterpret_cast<uint8_t*>(buffer),
-                                         reinterpret_cast<uint8_t*>(buffer) + bytesRead);
+                                         reinterpret_cast<uint8_t*>(buffer.data()),
+                                         reinterpret_cast<uint8_t*>(buffer.data()) + bytesRead);
 
             // Process buffer
             while (!client->receiveBuffer.empty())
@@ -277,6 +310,7 @@ void WebSocketServer::clientLoop(ClientInfo* client)
     // Notify disconnection
     if (connectionCallback)
         connectionCallback(client->id, false);
+
 }
 
 //==============================================================================
@@ -284,19 +318,25 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 {
     if (!client || !client->socket)
     {
-        juce::File logFile("/tmp/whycremisi-debug.log");
+#ifndef NDEBUG
+        juce::File logFile = whycremisi::debugLogFile();
         logFile.appendText("[WS-HS] No client or socket\n");
+#endif
         return false;
     }
 
-    juce::File logFile("/tmp/whycremisi-debug.log");
+#ifndef NDEBUG
+    juce::File logFile = whycremisi::debugLogFile();
+#endif
     auto ts = []() { return juce::Time::getCurrentTime().toString(true, true, true, true); };
 
     // Read HTTP upgrade request with polling
-    char buffer[4096];
+    char buffer[8192];
     int totalRead = 0;
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Waiting for handshake data...\n");
+#endif
 
     int maxWaitMs = 3000;
     auto startTime = juce::Time::getMillisecondCounter();
@@ -321,27 +361,35 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
         }
         else
         {
+#ifndef NDEBUG
             logFile.appendText("[" + ts() + "] [WS-HS] Read error: " + juce::String(bytesRead) + "\n");
+#endif
             break;
         }
     }
 
     if (totalRead <= 0)
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] No data received\n");
+#endif
         return false;
     }
 
     buffer[totalRead] = '\0';
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Received " + juce::String(totalRead) + " bytes\n");
     logFile.appendText("[" + ts() + "] [WS-HS] Request: " + juce::String(buffer, totalRead).substring(0, 300) + "\n");
+#endif
 
     juce::String request(buffer, totalRead);
 
     if (!request.startsWith("GET"))
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] Not a GET request\n");
+#endif
         return false;
     }
 
@@ -360,16 +408,22 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
 
     if (key.isEmpty())
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] No Sec-WebSocket-Key found\n");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Client key: " + key + "\n");
+#endif
 
     // Compute accept key
     juce::String acceptKey = computeWebSocketAcceptKey(key);
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Accept key: " + acceptKey + "\n");
+#endif
 
     // Send HTTP 101 response
     juce::String response =
@@ -380,15 +434,21 @@ bool WebSocketServer::performHandshake(ClientInfo* client)
         "\r\n";
 
     int sent = client->socket->write(response.toRawUTF8(), response.getNumBytesAsUTF8());
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Response sent: " + juce::String(sent) + " bytes\n");
+#endif
 
     if (sent <= 0)
     {
+#ifndef NDEBUG
         logFile.appendText("[" + ts() + "] [WS-HS] Failed to send response\n");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     logFile.appendText("[" + ts() + "] [WS-HS] Handshake SUCCESS\n");
+#endif
     return true;
 }
 
@@ -573,8 +633,12 @@ void WebSocketServer::sendFrame(juce::StreamingSocket* socket,
     // Payload
     frame.insert(frame.end(), payload.begin(), payload.end());
 
-    // Send
-    socket->write(frame.data(), static_cast<int>(frame.size()));
+    // Send (SIGPIPE is ignored, so write returns -1 on disconnected client)
+    int bytesWritten = socket->write(frame.data(), static_cast<int>(frame.size()));
+    if (bytesWritten < 0)
+    {
+        DBG("[WebSocketServer] Write failed (client disconnected)");
+    }
 }
 
 void WebSocketServer::sendTextFrame(juce::StreamingSocket* socket, const juce::String& text)
@@ -677,11 +741,18 @@ juce::String WebSocketServer::getServerURL() const
 void WebSocketServer::cleanupClients()
 {
     std::lock_guard<std::mutex> lock(clientsMutex);
-    clients.erase(
-        std::remove_if(clients.begin(), clients.end(),
-            [](const std::unique_ptr<ClientInfo>& c) { return !c->connected.load(); }),
-        clients.end()
-    );
+    for (auto it = clients.begin(); it != clients.end(); )
+    {
+        auto& c = *it;
+        if (!c->connected.load())
+        {
+            if (c->thread && c->thread->joinable())
+                c->thread->join();
+            it = clients.erase(it);
+        }
+        else
+            ++it;
+    }
 }
 
 juce::String WebSocketServer::getCurrentTimestamp() const

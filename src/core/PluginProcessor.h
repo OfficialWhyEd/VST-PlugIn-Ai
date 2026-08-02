@@ -10,16 +10,26 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include <memory>
 #include <map>
+#include <functional>
 
 // Forward declarations
 class AiEngine;
 class OscBridge;
 class SessionManager;
+class MidiHandler;
+class ParameterMapper;
+class PluginChain;
+class DSPEngine;
+class PersonalityCore;
+class AgentWorkspace;
 
 //==============================================================================
 class WhyCremisiProcessor : public juce::AudioProcessor
+                           , private juce::AudioProcessorValueTreeState::Listener
+                           , private juce::AsyncUpdater
 {
 public:
     //==============================================================================
@@ -52,8 +62,8 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     //==============================================================================
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
+    int getNumPrograms() override { return (int)programNames.size(); }
+    int getCurrentProgram() override { return currentProgramIndex.load(); }
     void setCurrentProgram(int index) override;
     const juce::String getProgramName(int index) override;
     void changeProgramName(int index, const juce::String& newName) override;
@@ -61,6 +71,24 @@ public:
     //==============================================================================
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
+
+    /** Add a new program (preset) to the list */
+    int addProgram(const juce::String& name);
+    
+    /** Remove a program by index */
+    bool removeProgram(int index);
+    
+    /** Get all program names */
+    juce::StringArray getProgramNames() const { return programNames; }
+    
+    /** Save current state as a named preset file */
+    bool savePreset(const juce::File& file);
+    
+    /** Load a preset from a file */
+    bool loadPreset(const juce::File& file);
+
+    /** Broadcast current program info to UI */
+    void broadcastCurrentProgram();
 
     //==============================================================================
     // WhyCremisi specific methods
@@ -88,6 +116,9 @@ public:
     bool isOscBridgeRunning() const;
     int getOscBridgeWsPort() const;
 
+    // Parameter change listener
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
+
 private:
     //==============================================================================
     // Parameters
@@ -96,10 +127,18 @@ private:
     // Parameter pointers
     std::atomic<float>* gainParam1 = nullptr;
     std::atomic<float>* gainParam2 = nullptr;
+    std::atomic<float>* gainParam3 = nullptr;
+    std::atomic<float>* gainParam4 = nullptr;
+    std::atomic<float>* gainParam5 = nullptr;
+    std::atomic<float>* gainParam6 = nullptr;
+    std::atomic<float>* gainParam7 = nullptr;
+    std::atomic<float>* gainParam8 = nullptr;
     std::atomic<float>* aiEnabled = nullptr;
     std::atomic<float>* aiProvider = nullptr;
     std::atomic<float>* aiModelIndex = nullptr;
     std::atomic<float>* oscPortParam = nullptr;
+    std::atomic<float>* dawOscPortParam = nullptr;
+    std::atomic<float>* wsPortParam = nullptr;
     
     // AI Engine
     std::unique_ptr<AiEngine> aiEngine;
@@ -112,15 +151,74 @@ private:
     // OscBridge (OSC + WebSocket for React UI)
     std::unique_ptr<OscBridge> oscBridge;
     int oscPort = 9000;
+    juce::String dawIp = "127.0.0.1";
+    int dawOscPort = 9001;
+    int wsPort = 8080;
 
+    // MIDI + Parameter Mapping
+    std::unique_ptr<MidiHandler> midiHandler;
+    std::unique_ptr<ParameterMapper> paramMapper;
+    bool midiThroughEnabled = false;
+
+    // Plugin Chain
+    std::unique_ptr<PluginChain> pluginChain;
+
+    // DSP Engine
+    std::unique_ptr<DSPEngine> dspEngine;
+    
     // Session Manager
     std::unique_ptr<SessionManager> sessionManager;
+
+    // Personality Core (memory + AI personality)
+    std::unique_ptr<PersonalityCore> personalityCore;
+
+    void refreshAiContext();
+
+    // Agent Workspace (OpenClaw templates: identity, soul, user, memory, heartbeat, tools, agents rules)
+    std::unique_ptr<AgentWorkspace> agentWorkspace;
 
     // Meter state (computed in processBlock, broadcast periodically)
     std::atomic<float> meterLevelL { -60.0f };
     std::atomic<float> meterLevelR { -60.0f };
     int meterBroadcastCounter { 0 };
-    static constexpr int METER_BROADCAST_EVERY = 512; // blocks
+    static constexpr int METER_BROADCAST_EVERY = 512;
+    int personalityBroadcastCounter { 0 };
+    static constexpr int PERSONALITY_BROADCAST_EVERY = 2048;
+
+    // Last known transport state (change detection in processBlock)
+    bool  lastIsPlaying   { false };
+    bool  lastIsRecording { false };
+    float lastBpm         { 120.0f };
+
+    // Audio device info (set in prepareToPlay, broadcast to UI)
+    double currentSampleRate  { 44100.0 };
+    int    currentBufferSize  { 512 };
+
+    // Parameter smoothing for automation
+    juce::SmoothedValue<float> smoothedGain;
+    bool smoothingInitialised = false;
+
+    // CPU usage monitoring
+    double lastProcessTimeUs { 0.0 };
+    double peakProcessTimeUs { 0.0 };
+    double avgProcessTimeUs  { 0.0 };
+    int    cpuCounter        { 0 };
+    int    cpuBroadcastEvery { 1024 };
+    static constexpr double TIMING_HISTORY_SIZE = 100.0;
+
+    // CPU throttle detection
+    std::atomic<bool> cpuThrottled{false};
+    double cpuThrottleThreshold = 85.0;
+    int cpuHighCount = 0;
+    int cpuThrottleCooldown = 0;
+
+    // VST3 Program/Preset management
+    juce::StringArray programNames;
+    std::atomic<int> currentProgramIndex { 0 };
+
+    // Async update from audio thread (deferred broadcast)
+    void handleAsyncUpdate() override;
+    std::atomic<bool> pendingPersonalityContext{false};
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WhyCremisiProcessor)
