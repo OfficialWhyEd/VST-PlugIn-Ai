@@ -35,6 +35,7 @@ class ParameterMapper;
 class PluginChain;
 class WhyCremisiProcessor;
 class IDawHandler;
+class DSPEngine;
 enum class DawType;
 
 class OscBridge : private juce::Timer
@@ -189,6 +190,16 @@ private:
     std::map<int, AbletonTrackInfo> abletonTracks;
     int abletonTrackCount = 0;
     bool abletonDetected = false;
+
+    /** Catena DSP del plugin, se il processor e' collegato. */
+    DSPEngine* getDspEngine() const;
+
+    /** Attiva o disattiva un modulo della catena e comunica alla UI il
+        nuovo stato, cosi' i pulsanti restano allineati alla realta'. */
+    void applyDspBypass (int module, bool bypassed);
+
+    /** Manda alla UI l'assetto corrente della catena DSP. */
+    void broadcastDspState();
 
     void handleAbletonTrackData(const juce::String& address, float value);
     /** Risposte di AbletonOSC, dove l'indice della traccia e' il primo

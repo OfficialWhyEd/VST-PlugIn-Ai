@@ -17,6 +17,10 @@ public:
     void reset();
     void process(juce::AudioBuffer<float>& buffer);
     void setBypass(int module, bool bypassed);
+    bool isBypassed(int module) const
+    {
+        return (module >= 0 && module < 3) ? bypass[module] : true;
+    }
 
     // Modules
     std::vector<std::unique_ptr<EQBand>> eqBands;

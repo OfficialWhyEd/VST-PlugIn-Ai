@@ -110,6 +110,11 @@ public:
     int getOscPort() const { return oscPort; }
     void setOscPort(int port);
 
+    /** Catena DSP interna (EQ, compressore, limiter, analyzer).
+        Serve al bridge per esporne i comandi alla UI e all'AI: senza
+        questo accesso i moduli restano irraggiungibili. */
+    DSPEngine* getDspEngine() const { return dspEngine.get(); }
+
     // OscBridge (OSC + WebSocket for React UI)
     OscBridge* getOscBridge() const { return oscBridge.get(); }
     bool isOscBridgeRunning() const;

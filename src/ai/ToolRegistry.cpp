@@ -63,6 +63,49 @@ void ToolRegistry::registerBuiltinTools()
     registerTool({"daw.marker.set", "Set a marker at current position", {
         {"name", "string", "Marker name", false}
     }});
+
+    // ── Catena DSP interna al plugin ────────────────────────────────
+    //
+    //  Sono i moduli che WhyCremisi ha al proprio interno, distinti dai
+    //  plugin caricati nella DAW. Partono tutti bypassati: finche' non
+    //  vengono attivati il plugin lascia passare il suono inalterato.
+    //
+    //  Le descrizioni dicono anche *quando* usare ogni strumento, non
+    //  solo cosa fa: e' quello che guida il modello a sceglierlo al
+    //  momento giusto invece di ignorarlo.
+
+    registerTool({"dsp.compressor.set",
+        "Configura e attiva il compressore interno del plugin. Usalo quando "
+        "il mix ha picchi troppo sporgenti, manca di consistenza, o l'utente "
+        "chiede piu' controllo sulla dinamica. Il compressore si accende da "
+        "solo quando imposti dei valori.", {
+        {"threshold", "number", "Soglia in dB: sotto questo livello non comprime", false, -60.0f, 0.0f},
+        {"ratio", "number", "Rapporto di compressione, 2 leggero e 10 deciso", false, 1.0f, 20.0f},
+        {"attack", "number", "Attacco in ms: basso prende i transienti, alto li lascia passare", false, 0.1f, 200.0f},
+        {"release", "number", "Rilascio in ms", false, 5.0f, 2000.0f},
+        {"makeup", "number", "Guadagno di recupero in dB", false, 0.0f, 24.0f}
+    }});
+
+    registerTool({"dsp.limiter.set",
+        "Configura e attiva il limiter interno. Usalo per impedire che il "
+        "segnale superi una soglia, tipicamente in fase di finalizzazione o "
+        "quando l'utente segnala clipping.", {
+        {"ceiling", "number", "Tetto massimo in dB, di norma fra -1 e -0.1", false, -12.0f, 0.0f},
+        {"release", "number", "Rilascio in ms", false, 1.0f, 1000.0f}
+    }});
+
+    registerTool({"dsp.bypass",
+        "Attiva o disattiva un modulo della catena interna. Usalo per "
+        "confrontare il suono con e senza lavorazione, o per riportare il "
+        "plugin a essere trasparente.", {
+        {"module", "string", "Quale modulo: eq, compressor, limiter, oppure all", true},
+        {"bypassed", "boolean", "True lo esclude, false lo attiva", true}
+    }});
+
+    registerTool({"dsp.getState",
+        "Riporta com'e' messa adesso la catena interna: quali moduli sono "
+        "attivi e con quali valori. Chiamalo prima di modificare qualcosa, "
+        "cosi' sai da dove parti invece di indovinare.", {}});
 }
 
 void ToolRegistry::registerTool(const ToolDefinition& tool)

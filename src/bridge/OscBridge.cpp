@@ -19,6 +19,7 @@
 #include "PluginChain.h"
 #include "PluginProcessor.h"
 #include "IDawHandler.h"
+#include "DSPEngine.h"
 #include "../debug/DebugLog.h"
 #include "ReaperDawHandler.h"
 #include "AbletonDawHandler.h"
@@ -470,6 +471,55 @@ void OscBridge::onOscStringReceived(const juce::String& address, const juce::Str
 //==============================================================================
 // Ableton Live: handle track parameter data
 //==============================================================================
+//==============================================================================
+// Catena DSP: accesso e stato
+//==============================================================================
+
+DSPEngine* OscBridge::getDspEngine() const
+{
+    return pluginProcessor ? pluginProcessor->getDspEngine() : nullptr;
+}
+
+void OscBridge::applyDspBypass (int module, bool bypassed)
+{
+    auto* dsp = getDspEngine();
+    if (! dsp) return;
+
+    dsp->setBypass (module, bypassed);
+    log (juce::String ("[DSP] modulo ") + juce::String (module)
+         + (bypassed ? " bypassato" : " attivo"));
+    broadcastDspState();
+}
+
+void OscBridge::broadcastDspState()
+{
+    auto* dsp = getDspEngine();
+    if (! dsp || ! wsServer) return;
+
+    nlohmann::json msg;
+    msg["type"] = "dsp.state";
+    msg["timestamp"] = juce::Time::currentTimeMillis();
+    msg["payload"]["eqBypassed"]    = dsp->isBypassed (DSPEngine::EqModule);
+    msg["payload"]["compBypassed"]  = dsp->isBypassed (DSPEngine::CompModule);
+    msg["payload"]["limitBypassed"] = dsp->isBypassed (DSPEngine::LimitModule);
+
+    if (dsp->compressor)
+    {
+        msg["payload"]["comp"]["threshold"] = dsp->compressor->getThreshold();
+        msg["payload"]["comp"]["ratio"]     = dsp->compressor->getRatio();
+        msg["payload"]["comp"]["attack"]    = dsp->compressor->getAttack();
+        msg["payload"]["comp"]["release"]   = dsp->compressor->getRelease();
+        msg["payload"]["comp"]["makeup"]    = dsp->compressor->getMakeup();
+    }
+    if (dsp->limiter)
+    {
+        msg["payload"]["limiter"]["threshold"] = dsp->limiter->getThreshold();
+        msg["payload"]["limiter"]["release"]   = dsp->limiter->getRelease();
+    }
+
+    wsServer->broadcast (msg);
+}
+
 void OscBridge::handleAbletonMultiArg(const juce::String& address, const std::vector<float>& args)
 {
     // AbletonOSC risponde con l'indice della traccia come primo argomento:
@@ -1094,43 +1144,96 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
         if (payload.contains("target"))
             sendOscToDaw("/whycremisi/loudness_target", payload["target"].get<float>());
     }
+    // ── Catena DSP interna ──────────────────────────────────────────────
+    //
+    //  Questi comandi agiscono sui moduli dentro il plugin. Prima venivano
+    //  spediti come OSC verso la DAW ("/whycremisi/comp_ratio"), che non li
+    //  conosce: uscivano dal plugin e non li riceveva nessuno, mentre il
+    //  compressore restava com'era.
     else if (command == "limiter")
     {
-        sendOscToDaw("/whycremisi/limiter", 1.0f);
-    }
-    else if (command == "softClip")
-    {
-        if (payload.contains("enabled"))
-            sendOscToDaw("/whycremisi/clip_mode", payload["enabled"].get<bool>() ? 0.0f : 1.0f);
-    }
-    else if (command == "hardClip")
-    {
-        if (payload.contains("enabled"))
-            sendOscToDaw("/whycremisi/clip_mode", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+        // Senza "enabled" il comando accende il limiter, che e' quello che
+        // ci si aspetta premendo un pulsante chiamato LIMIT.
+        const bool on = payload.contains("enabled") ? payload["enabled"].get<bool>() : true;
+        applyDspBypass (DSPEngine::LimitModule, ! on);
     }
     else if (command == "ceiling")
     {
         if (payload.contains("value"))
-            sendOscToDaw("/whycremisi/ceiling", payload["value"].get<float>());
+            if (auto* dsp = getDspEngine())
+                if (dsp->limiter)
+                    dsp->limiter->setThreshold (payload["value"].get<float>());
     }
     else if (command == "compThreshold")
     {
         if (payload.contains("value"))
-            sendOscToDaw("/whycremisi/comp_threshold", payload["value"].get<float>());
+            if (auto* dsp = getDspEngine())
+                if (dsp->compressor)
+                    dsp->compressor->setThreshold (payload["value"].get<float>());
     }
     else if (command == "compRatio")
     {
         if (payload.contains("value"))
-            sendOscToDaw("/whycremisi/comp_ratio", payload["value"].get<float>());
+            if (auto* dsp = getDspEngine())
+                if (dsp->compressor)
+                    dsp->compressor->setRatio (payload["value"].get<float>());
+    }
+    else if (command == "compAttack")
+    {
+        if (payload.contains("value"))
+            if (auto* dsp = getDspEngine())
+                if (dsp->compressor)
+                    dsp->compressor->setAttack (payload["value"].get<float>());
+    }
+    else if (command == "compRelease")
+    {
+        if (payload.contains("value"))
+            if (auto* dsp = getDspEngine())
+                if (dsp->compressor)
+                    dsp->compressor->setRelease (payload["value"].get<float>());
+    }
+    else if (command == "compMakeup")
+    {
+        if (payload.contains("value"))
+            if (auto* dsp = getDspEngine())
+                if (dsp->compressor)
+                    dsp->compressor->setMakeup (payload["value"].get<float>());
     }
     else if (command == "compBypass")
     {
-        if (payload.contains("enabled"))
-            sendOscToDaw("/whycremisi/comp_bypass", payload["enabled"].get<bool>() ? 1.0f : 0.0f);
+        // "enabled" qui significa "bypass attivo", come lo manda la UI.
+        const bool bypassed = payload.contains("enabled") ? payload["enabled"].get<bool>() : true;
+        applyDspBypass (DSPEngine::CompModule, bypassed);
+    }
+    else if (command == "eqBypass")
+    {
+        const bool bypassed = payload.contains("enabled") ? payload["enabled"].get<bool>() : true;
+        applyDspBypass (DSPEngine::EqModule, bypassed);
+    }
+    else if (command == "dspBypassAll")
+    {
+        const bool bypassed = payload.contains("enabled") ? payload["enabled"].get<bool>() : true;
+        applyDspBypass (DSPEngine::EqModule, bypassed);
+        applyDspBypass (DSPEngine::CompModule, bypassed);
+        applyDspBypass (DSPEngine::LimitModule, bypassed);
     }
     else if (command == "compAuto")
     {
-        sendOscToDaw("/whycremisi/comp_auto", 1.0f);
+        // Impostazione di partenza ragionevole per un master: soglia sotto
+        // il livello di lavoro tipico e rapporto contenuto, cosi' interviene
+        // sui picchi senza schiacciare il pezzo.
+        if (auto* dsp = getDspEngine())
+        {
+            if (dsp->compressor)
+            {
+                dsp->compressor->setThreshold (-18.0f);
+                dsp->compressor->setRatio (2.5f);
+                dsp->compressor->setAttack (10.0f);
+                dsp->compressor->setRelease (120.0f);
+                dsp->compressor->setMakeup (0.0f);
+            }
+            applyDspBypass (DSPEngine::CompModule, false);
+        }
     }
     else if (command == "applyEQ")
     {
@@ -2365,6 +2468,113 @@ void OscBridge::setAiEngine(AiEngine* engine)
             sendDawCmd("setMarker", {{"name", name}});
             result.success = true;
             result.output = name.empty() ? "Marker set" : "Marker '" + name + "' set";
+        }
+        // ── Catena DSP interna ──────────────────────────────────────
+        else if (call.name == "dsp.compressor.set") {
+            auto* dsp = getDspEngine();
+            if (! dsp || ! dsp->compressor) {
+                result.success = false;
+                result.output = "Catena DSP non disponibile";
+            } else {
+                juce::StringArray applicati;
+                auto leggi = [&](const char* chiave, auto setter, const char* etichetta) {
+                    if (call.arguments.contains(chiave) && call.arguments[chiave].is_number()) {
+                        const float v = call.arguments[chiave].get<float>();
+                        setter(v);
+                        applicati.add (juce::String(etichetta) + " " + juce::String(v, 1));
+                    }
+                };
+                leggi("threshold", [&](float v){ dsp->compressor->setThreshold(v); }, "soglia");
+                leggi("ratio",     [&](float v){ dsp->compressor->setRatio(v); },     "rapporto");
+                leggi("attack",    [&](float v){ dsp->compressor->setAttack(v); },    "attacco");
+                leggi("release",   [&](float v){ dsp->compressor->setRelease(v); },   "rilascio");
+                leggi("makeup",    [&](float v){ dsp->compressor->setMakeup(v); },    "recupero");
+
+                // Impostare valori senza attivare il modulo non avrebbe
+                // effetto udibile, e sembrerebbe che il comando sia stato
+                // ignorato.
+                applyDspBypass (DSPEngine::CompModule, false);
+
+                result.success = true;
+                result.output = applicati.isEmpty()
+                    ? "Compressore attivato con i valori correnti"
+                    : "Compressore attivo: " + applicati.joinIntoString(", ").toStdString();
+            }
+        }
+        else if (call.name == "dsp.limiter.set") {
+            auto* dsp = getDspEngine();
+            if (! dsp || ! dsp->limiter) {
+                result.success = false;
+                result.output = "Catena DSP non disponibile";
+            } else {
+                if (call.arguments.contains("ceiling") && call.arguments["ceiling"].is_number())
+                    dsp->limiter->setThreshold (call.arguments["ceiling"].get<float>());
+                if (call.arguments.contains("release") && call.arguments["release"].is_number())
+                    dsp->limiter->setRelease (call.arguments["release"].get<float>());
+
+                applyDspBypass (DSPEngine::LimitModule, false);
+                result.success = true;
+                result.output = "Limiter attivo a "
+                    + juce::String (dsp->limiter->getThreshold(), 1).toStdString() + " dB";
+            }
+        }
+        else if (call.name == "dsp.bypass") {
+            auto* dsp = getDspEngine();
+            const std::string modulo = call.arguments.contains("module")
+                ? call.arguments["module"].get<std::string>() : "";
+            const bool bypassed = call.arguments.contains("bypassed")
+                ? call.arguments["bypassed"].get<bool>() : true;
+
+            if (! dsp) {
+                result.success = false;
+                result.output = "Catena DSP non disponibile";
+            } else if (modulo == "eq") {
+                applyDspBypass (DSPEngine::EqModule, bypassed);
+                result.success = true;
+            } else if (modulo == "compressor") {
+                applyDspBypass (DSPEngine::CompModule, bypassed);
+                result.success = true;
+            } else if (modulo == "limiter") {
+                applyDspBypass (DSPEngine::LimitModule, bypassed);
+                result.success = true;
+            } else if (modulo == "all") {
+                applyDspBypass (DSPEngine::EqModule, bypassed);
+                applyDspBypass (DSPEngine::CompModule, bypassed);
+                applyDspBypass (DSPEngine::LimitModule, bypassed);
+                result.success = true;
+            } else {
+                result.success = false;
+                result.output = "Modulo sconosciuto: " + modulo + " (usa eq, compressor, limiter o all)";
+            }
+
+            if (result.success)
+                result.output = modulo + (bypassed ? " bypassato" : " attivo");
+        }
+        else if (call.name == "dsp.getState") {
+            auto* dsp = getDspEngine();
+            if (! dsp) {
+                result.success = false;
+                result.output = "Catena DSP non disponibile";
+            } else {
+                nlohmann::json stato;
+                stato["eq"]["bypassed"]        = dsp->isBypassed (DSPEngine::EqModule);
+                stato["compressor"]["bypassed"] = dsp->isBypassed (DSPEngine::CompModule);
+                stato["limiter"]["bypassed"]    = dsp->isBypassed (DSPEngine::LimitModule);
+                if (dsp->compressor) {
+                    stato["compressor"]["threshold"] = dsp->compressor->getThreshold();
+                    stato["compressor"]["ratio"]     = dsp->compressor->getRatio();
+                    stato["compressor"]["attack"]    = dsp->compressor->getAttack();
+                    stato["compressor"]["release"]   = dsp->compressor->getRelease();
+                    stato["compressor"]["makeup"]    = dsp->compressor->getMakeup();
+                    stato["compressor"]["gainReduction"] = dsp->compressor->getCurrentReduction();
+                }
+                if (dsp->limiter) {
+                    stato["limiter"]["ceiling"] = dsp->limiter->getThreshold();
+                    stato["limiter"]["release"] = dsp->limiter->getRelease();
+                }
+                result.success = true;
+                result.output = stato.dump();
+            }
         }
         // Widget controls (dynamic)
         else if (call.name.startsWith("widget.set_")) {

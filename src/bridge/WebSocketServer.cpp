@@ -40,30 +40,66 @@ void WebSocketServer::setPort(int newPort)
     port = newPort;
 }
 
+namespace
+{
+    /** Vero se qualcuno sta gia' ascoltando su questa porta.
+        Su Windows il bind puo' riuscire anche quando la porta e' occupata,
+        quindi non basta guardare l'esito di createListener: si prova a
+        connettersi come client, e se qualcuno risponde la porta e' presa. */
+    bool portInUse (int port)
+    {
+        juce::StreamingSocket probe;
+        const bool connected = probe.connect ("127.0.0.1", port, 120);
+        probe.close();
+        return connected;
+    }
+}
+
 bool WebSocketServer::start()
 {
     if (running.load())
         return true;
 
-    int retries = 3;
-    int retryDelay = 500;
-    for (int attempt = 0; attempt <= retries; ++attempt)
-    {
-        serverSocket = std::make_unique<juce::StreamingSocket>();
+    // Un plugin puo' essere caricato piu' volte nella stessa sessione — in
+    // Ableton e' la norma — e ogni istanza vuole il proprio server. Se la
+    // porta preferita e' occupata si passa alla successiva invece di
+    // insistere: prima tutte le istanze credevano di avere la 8080 e le
+    // connessioni finivano su una a caso.
+    const int preferredPort = port;
+    const int maxPortsToTry = 20;
 
-        if (serverSocket->createListener(port))
+    for (int offset = 0; offset < maxPortsToTry; ++offset)
+    {
+        const int candidate = preferredPort + offset;
+
+        if (portInUse (candidate))
+            continue;
+
+        serverSocket = std::make_unique<juce::StreamingSocket>();
+        if (serverSocket->createListener (candidate))
+        {
+            port = candidate;
+            if (candidate != preferredPort)
+            {
+                juce::String note = "[WebSocketServer] Porta " + juce::String (preferredPort)
+                                  + " occupata, uso la " + juce::String (candidate);
+                DBG (note);
+                fprintf (stderr, "%s\n", note.toRawUTF8());
+            }
             break;
+        }
 
         serverSocket.reset();
-        juce::String msg = "[WebSocketServer] Cannot create listener on port " + juce::String(port)
-                           + " (attempt " + juce::String(attempt + 1) + "/" + juce::String(retries + 1) + ")";
-        DBG(msg);
-        fprintf(stderr, "%s\n", msg.toRawUTF8());
+    }
 
-        if (attempt < retries)
-            juce::Thread::sleep(retryDelay * (attempt + 1));
-        else
-            return false;
+    if (! serverSocket)
+    {
+        juce::String msg = "[WebSocketServer] Nessuna porta libera fra "
+                         + juce::String (preferredPort) + " e "
+                         + juce::String (preferredPort + maxPortsToTry - 1);
+        DBG (msg);
+        fprintf (stderr, "%s\n", msg.toRawUTF8());
+        return false;
     }
 
     running.store(true);
