@@ -82,6 +82,28 @@ si applica al riavvio del listener.
 
 ---
 
+## Il log
+
+Il plugin scrive sempre, anche nella build Release, in:
+
+```
+%APPDATA%\WhyCremisi\whycremisi.log
+```
+
+Si può aprire con Blocco note mentre Live sta suonando. Ogni riga porta
+l'ora al millisecondo e l'area che l'ha scritta; a ogni caricamento c'è
+un'intestazione con frequenza di campionamento, dimensione dei blocchi e
+nome dell'host, così si distingue una sessione dall'altra e si capisce a
+quale istanza appartiene ciascuna riga. Il file ruota a 5 MB: la versione
+precedente diventa `whycremisi.log.1`.
+
+Cosa registra: avvio del bridge e porte occupate, connessioni
+dell'interfaccia, comandi ricevuti, messaggi OSC in entrata e in uscita,
+modifiche alla catena DSP, errori.
+
+Se qualcosa non va, quel file è la prima cosa da guardare — e da allegare
+quando si chiede aiuto.
+
 ## Come capire se sta funzionando
 
 - Nel log del plugin compaiono righe `[OSC] SENT: /live/song/...`
