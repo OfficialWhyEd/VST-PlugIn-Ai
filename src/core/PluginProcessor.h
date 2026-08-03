@@ -110,6 +110,12 @@ public:
     int getOscPort() const { return oscPort; }
     void setOscPort(int port);
 
+    /** Salva le impostazioni AI in un file dell'utente, non nel progetto:
+        provider, modello e credenziali valgono per la persona, non per il
+        brano. Senza, ogni nuovo progetto ripartiva da zero. */
+    void saveUserSettings() const;
+    void loadUserSettings();
+
     /** Catena DSP interna (EQ, compressore, limiter, analyzer).
         Serve al bridge per esporne i comandi alla UI e all'AI: senza
         questo accesso i moduli restano irraggiungibili. */

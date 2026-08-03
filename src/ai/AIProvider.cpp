@@ -261,16 +261,11 @@ juce::StringArray OpenRouterProvider::freeModels()
 
 juce::StringArray OpenRouterProvider::getAvailableModels()
 {
-    // Prima i gratuiti, poi i modelli di punta a pagamento: chi arriva qui
-    // di solito cerca proprio l'opzione senza costi.
-    auto models = freeModels();
-    models.addArray ({
-        "anthropic/claude-opus-4.5",
-        "anthropic/claude-sonnet-4.5",
-        "openai/gpt-4o",
-        "google/gemini-2.0-flash-001",
-    });
-    return models;
+    // Solo gratuiti. I modelli a pagamento sono stati tolti di proposito:
+    // questa e' la via d'accesso per chi non vuole spendere, e mettere
+    // accanto modelli che si pagano significa esporre qualcuno a un costo
+    // che non aveva chiesto.
+    return freeModels();
 }
 
 bool OpenRouterProvider::testConnection()

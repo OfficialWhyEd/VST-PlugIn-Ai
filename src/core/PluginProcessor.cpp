@@ -96,6 +96,9 @@ WhyCremisiProcessor::WhyCremisiProcessor()
     // Initialize AI Engine
     aiEngine = std::make_unique<AiEngine>();
     updateAiEngineConfig();
+    // Riprende quello che l'utente aveva gia' scelto, in qualunque
+    // progetto lo avesse scelto.
+    loadUserSettings();
     
     // Initialize Session Manager
     sessionManager = std::make_unique<SessionManager>();
@@ -633,6 +636,71 @@ void WhyCremisiProcessor::broadcastCurrentProgram()
 }
 
 //==============================================================================
+// ── Impostazioni dell'utente ───────────────────────────────────────
+//
+//  Provider, modello e credenziali appartengono alla persona, non al
+//  brano: stanno in un file suo, cosi' valgono in ogni progetto e in
+//  ogni istanza. Prima vivevano solo in memoria e sparivano alla
+//  chiusura, quindi ogni sessione ricominciava dalla schermata di
+//  configurazione.
+
+void WhyCremisiProcessor::saveUserSettings() const
+{
+    if (!aiEngine) return;
+
+    const auto& cfg = aiEngine->getConfig();
+
+    nlohmann::json j;
+    j["provider"] = getAiProvider().toStdString();
+    j["model"]    = cfg.model.toStdString();
+    j["effort"]   = cfg.effort.toStdString();
+    j["baseUrl"]  = cfg.baseUrl.toStdString();
+    // Le credenziali restano sul disco dell'utente e non escono di qui.
+    j["apiKey"]    = cfg.apiKey.toStdString();
+    j["authToken"] = cfg.authToken.toStdString();
+
+    auto file = whycremisi::appDataDirectory().getChildFile("impostazioni.json");
+    file.replaceWithText(juce::String(j.dump(2)));
+}
+
+void WhyCremisiProcessor::loadUserSettings()
+{
+    auto file = whycremisi::appDataDirectory().getChildFile("impostazioni.json");
+    if (!file.existsAsFile() || !aiEngine) return;
+
+    auto testo = file.loadFileAsString();
+    auto j = nlohmann::json::parse(testo.toStdString(), nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return;
+
+    auto leggi = [&j](const char* chiave) -> juce::String {
+        return (j.contains(chiave) && j[chiave].is_string())
+             ? juce::String(j[chiave].get<std::string>()) : juce::String();
+    };
+
+    const auto provider = leggi("provider");
+
+    aiEngine->updateConfig([&](AiEngine::Config& cfg) {
+        if (provider == "anthropic")       cfg.provider = AiEngine::Provider::Anthropic;
+        else if (provider == "openai")     cfg.provider = AiEngine::Provider::OpenAI;
+        else if (provider == "gemini")     cfg.provider = AiEngine::Provider::Gemini;
+        else if (provider == "openrouter") cfg.provider = AiEngine::Provider::OpenRouter;
+        else if (provider == "groq")       cfg.provider = AiEngine::Provider::Groq;
+        else if (provider == "ollama")     cfg.provider = AiEngine::Provider::Ollama;
+
+        const auto modello = leggi("model");
+        if (modello.isNotEmpty()) cfg.model = modello;
+        const auto effort = leggi("effort");
+        if (effort.isNotEmpty()) cfg.effort = effort;
+        const auto baseUrl = leggi("baseUrl");
+        if (baseUrl.isNotEmpty()) cfg.baseUrl = baseUrl;
+        cfg.apiKey = leggi("apiKey");
+        cfg.authToken = leggi("authToken");
+    });
+
+    whycremisi::log("impostazioni", "ripristinate: provider " + provider
+                    + ", modello " + leggi("model"));
+}
+
 void WhyCremisiProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();

@@ -1781,6 +1781,12 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         response["timestamp"] = juce::Time::currentTimeMillis();
         response["payload"] = responsePayload;
         wsServer->broadcast(response);
+
+        // Ogni impostazione accettata finisce subito sul disco: se il DAW
+        // si chiude male, o si apre un altro progetto, la scelta resta.
+        if (pluginProcessor && responsePayload.contains("status")
+            && responsePayload["status"] == "ok")
+            pluginProcessor->saveUserSettings();
     };
 
     // ── Read path (config.get) ──────────────────────────────────
@@ -1852,9 +1858,9 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
                 else if (provider == "openrouter")
                 {
                     cfg.provider = AiEngine::Provider::OpenRouter;
-                    // Chi sceglie OpenRouter di solito cerca l'opzione senza
-                    // costi: si parte da un modello gratuito.
-                    if (cfg.model.isEmpty() || ! cfg.model.contains ("/"))
+                    // Solo modelli gratuiti: chi arriva qui non deve
+                    // ritrovarsi a pagare senza averlo chiesto.
+                    if (cfg.model.isEmpty() || ! OpenRouterProvider::isFreeModel (cfg.model))
                         cfg.model = OpenRouterProvider::freeModels()[0];
                 }
                 else if (provider == "groq")
