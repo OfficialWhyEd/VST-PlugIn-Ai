@@ -712,5 +712,45 @@ bool GeminiProvider::testConnection()
 
 juce::StringArray GeminiProvider::getAvailableModels()
 {
-    return {"gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"};
+    // Chiede a Google quali modelli esistono davvero, invece di tenere una
+    // lista scritta a mano. Le liste fisse invecchiano in silenzio: qui
+    // c'erano gemini-1.5-flash e gemini-1.5-pro, ritirati, e chi li avesse
+    // scelti avrebbe ricevuto un errore senza capirne il motivo.
+    if (config.apiKey.isNotEmpty())
+    {
+        const juce::String url = "https://generativelanguage.googleapis.com/v1beta/models?key="
+                               + config.apiKey;
+        const juce::String raw = makeHttpRequest (url, "GET", "", 10000);
+        const auto j = parseJsonSafe (raw);
+
+        if (j.contains ("models") && j["models"].is_array())
+        {
+            juce::StringArray trovati;
+            for (const auto& m : j["models"])
+            {
+                if (! m.contains ("name") || ! m["name"].is_string()) continue;
+
+                // Tiene solo quelli che sanno generare testo: l'elenco
+                // comprende anche modelli per gli embedding, che qui non
+                // servono e confonderebbero soltanto.
+                bool generaTesto = false;
+                if (m.contains ("supportedGenerationMethods") && m["supportedGenerationMethods"].is_array())
+                    for (const auto& metodo : m["supportedGenerationMethods"])
+                        if (metodo.is_string() && metodo.get<std::string>() == "generateContent")
+                            generaTesto = true;
+                if (! generaTesto) continue;
+
+                // I nomi arrivano come "models/gemini-...": si tiene la parte utile.
+                juce::String nome (m["name"].get<std::string>());
+                trovati.add (nome.fromLastOccurrenceOf ("/", false, true));
+            }
+
+            if (! trovati.isEmpty())
+                return trovati;
+        }
+    }
+
+    // Senza chiave non si puo' chiedere niente: si mostra un punto di
+    // partenza ragionevole, che verra' sostituito appena la chiave c'e'.
+    return { "gemini-2.0-flash" };
 }

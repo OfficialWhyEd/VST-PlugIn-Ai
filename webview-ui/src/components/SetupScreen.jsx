@@ -64,6 +64,8 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [subscriptionToken, setSubscriptionToken] = useState('')
   // null = non ancora verificato, true/false = esito del rilevamento.
   const [subscriptionDetected, setSubscriptionDetected] = useState(null)
+  // Modelli riportati dal fornitore, quando li sa dire lui.
+  const [modelliVivi, setModelliVivi] = useState(null)
   const unsubRef = useRef(null)
   const timeoutsRef = useRef([])
 
@@ -79,6 +81,29 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
       timeoutsRef.current.forEach(clearTimeout)
     }
   }, [])
+
+  // Su Gemini l'elenco dei modelli lo dà Google, non una lista scritta qui:
+  // le liste fisse invecchiano e chi sceglie un modello ritirato riceve un
+  // errore senza capire perché. Si chiede appena c'è una chiave.
+  useEffect(() => {
+    if (provider !== 'gemini' || !apiKey || apiKey.length < 20) return
+    if (!whycremisi.isConnected()) return
+    const unsub = whycremisi.on('config.response', (payload) => {
+      if (payload?.key !== 'ai.getModels') return
+      if (Array.isArray(payload.models) && payload.models.length) {
+        setModelliVivi(payload.models)
+        if (!payload.models.includes(model)) setModel(payload.models[0])
+      }
+    })
+    // Il motore va messo al corrente della chiave appena digitata, altrimenti
+    // interrogherebbe Google senza credenziali e non riceverebbe nulla.
+    whycremisi.send({ type: 'config.set', payload: { key: 'ai.provider', value: 'gemini' } })
+    whycremisi.send({ type: 'config.set', payload: { key: 'ai.apiKey', value: apiKey } })
+    const attesa = setTimeout(() => {
+      whycremisi.send({ type: 'config.set', payload: { key: 'ai.getModels' } })
+    }, 300)
+    return () => { clearTimeout(attesa); unsub() }
+  }, [provider, apiKey])
 
   // Quando si sceglie Claude, chiediamo al plugin se sulla macchina c'è già
   // un abbonamento utilizzabile: se sì non serve chiedere nulla all'utente.
@@ -372,7 +397,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                 {/* Su OpenRouter i nomi sono lunghi e disuguali: in griglia
                     restano incolonnati invece di spezzarsi a caso. */}
                 <div className={provider === 'openrouter' ? 'grid grid-cols-2 gap-1' : 'flex flex-wrap gap-1'}>
-                  {(modelsByProvider[provider] || []).map(m => {
+                  {((provider === 'gemini' && modelliVivi) || modelsByProvider[provider] || []).map(m => {
                     const label = modelLabels[m]
                     const free = isFreeModel(m)
                     const text = label ? label.name
