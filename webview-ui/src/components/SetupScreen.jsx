@@ -314,6 +314,24 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                   <label className="text-[8px] font-bold text-[#FFB000] uppercase tracking-widest block mb-1">
                     API Key
                   </label>
+                  {/* Accesso col proprio account: apre la pagina vera del
+                      fornitore nel browser, dove si entra con la propria
+                      email. Da lì si copia la chiave e si torna qui — una
+                      volta sola, poi resta salvata. */}
+                  <button
+                    onClick={() => whycremisi.send({
+                      type: 'config.set',
+                      payload: { key: 'ai.openLogin', provider },
+                    })}
+                    className="group w-full mb-1.5 inline-flex items-center justify-between rounded-full pl-3.5 pr-1.5 py-1.5 text-[10px] font-bold tracking-tight transition-all duration-500"
+                    style={{ backgroundColor: '#ffffff', color: '#0a0a0a' }}
+                  >
+                    Accedi con {providerNames[provider]}
+                    <span className="w-5 h-5 rounded-full bg-black/10 flex items-center justify-center transition-transform duration-500 group-hover:translate-x-0.5">
+                      <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+                    </span>
+                  </button>
+
                   <div className="relative flex">
                     <input
                       type={showKey ? 'text' : 'password'}

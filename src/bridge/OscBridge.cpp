@@ -1999,6 +1999,46 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["receivePortNeedsRestart"] = (receivePort != oscPort);
         sendConfigResponse(rp);
     }
+    else if (configKey == "ai.openLogin")
+    {
+        // Apre nel browser la pagina dove l'utente accede davvero con la
+        // propria email e trova la chiave da riportare qui. Non e' ancora
+        // il ritorno automatico di un OAuth completo — quello richiede un
+        // client registrato presso il fornitore e una pagina di rientro —
+        // ma e' il percorso piu' breve che funziona: un clic, il login
+        // vero, e si torna.
+        if (!payload.contains("provider") || !payload["provider"].is_string()) return;
+        const juce::String provider (payload["provider"].get<std::string>().data());
+
+        juce::String url;
+        if (provider == "anthropic")       url = "https://console.anthropic.com/settings/keys";
+        else if (provider == "openai")     url = "https://platform.openai.com/api-keys";
+        else if (provider == "gemini")     url = "https://aistudio.google.com/app/apikey";
+        else if (provider == "openrouter") url = "https://openrouter.ai/keys";
+        else if (provider == "groq")       url = "https://console.groq.com/keys";
+
+        if (url.isEmpty())
+        {
+            nlohmann::json err;
+            err["key"] = "ai.openLogin";
+            err["status"] = "error";
+            err["message"] = "Nessuna pagina di accesso per questo provider";
+            sendConfigResponse(err);
+            return;
+        }
+
+        const bool aperto = juce::URL(url).launchInDefaultBrowser();
+        log("[AUTH] Pagina di accesso " + provider + ": " + (aperto ? "aperta" : "NON aperta"));
+
+        nlohmann::json rp;
+        rp["key"] = "ai.openLogin";
+        rp["provider"] = provider.toStdString();
+        rp["url"] = url.toStdString();
+        // Non "ok": non deve far scattare il salvataggio delle impostazioni,
+        // qui non e' cambiato niente da salvare.
+        rp["status"] = aperto ? "opened" : "failed";
+        sendConfigResponse(rp);
+    }
     else if (configKey == "ai.detectSubscription")
     {
         // La UI chiede se sulla macchina c'e' gia' un abbonamento Claude
