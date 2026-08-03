@@ -437,6 +437,8 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
             oscBridge->updateAnalyzer(data.corrMono, data.momentaryLoudness, data.shortTermLoudness,
                                       data.integratedLoudness, data.truePeak, spectrum, data.clippingCount);
             oscBridge->updateScope(data.rms, data.scopePoints);
+            oscBridge->updateTempoAndKey(data.bpm, data.bpmConfidence,
+                                          data.key, data.keyConfidence);
             if (dspEngine->compressor)
                 oscBridge->updateGainReduction(dspEngine->compressor->getCurrentReduction());
             dspAnalyzer->clearNewData();

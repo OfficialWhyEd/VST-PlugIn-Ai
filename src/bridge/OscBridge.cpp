@@ -208,6 +208,16 @@ void OscBridge::timerCallback()
         ana["payload"]["clippingCount"] = clipCount;
         ana["payload"]["rms"] = lastRms.load();
         ana["payload"]["gainReduction"] = lastGainReduction.load();
+        ana["payload"]["bpm"] = lastBpm.load();
+        ana["payload"]["bpmConfidence"] = lastBpmConfidence.load();
+        {
+            const juce::ScopedLock sl(spectrumLock);
+            if (lastKey.isNotEmpty())
+            {
+                ana["payload"]["key"] = lastKey.toStdString();
+                ana["payload"]["keyConfidence"] = lastKeyConfidence.load();
+            }
+        }
 
         // Include device stats
         double bufSize = static_cast<double>(lastBufferSize.load());
@@ -2145,6 +2155,16 @@ void OscBridge::updateScope(float rmsDb, const std::vector<float>& scopePoints)
     lastScopePoints = scopePoints;
 }
 
+void OscBridge::updateTempoAndKey(float bpm, float bpmConfidence,
+                                   const juce::String& key, float keyConfidence)
+{
+    lastBpm.store(bpm);
+    lastBpmConfidence.store(bpmConfidence);
+    lastKeyConfidence.store(keyConfidence);
+    const juce::ScopedLock sl(spectrumLock);
+    lastKey = key;
+}
+
 void OscBridge::broadcastSessionEvent(const std::string& eventType, const nlohmann::json& data)
 {
     if (!wsServer || !wsServer->isRunning() || wsServer->getConnectedClientsCount() == 0)
@@ -2570,6 +2590,41 @@ void OscBridge::setAiEngine(AiEngine* engine)
                 m["clippingCount"] = d.clippingCount;
                 m["spectralCentroid"] = d.spectralCentroid;
                 m["spectralRolloff"]  = d.spectralRolloff;
+
+                // Tempo e tonalita' con la loro affidabilita': su materiale
+                // senza pulsazione chiara o senza tonalita' definita i
+                // numeri escono comunque, ed e' la confidenza a dire se
+                // vanno presi sul serio.
+                if (d.bpm > 0.0f)
+                {
+                    m["bpm"] = d.bpm;
+                    m["bpmConfidence"] = d.bpmConfidence;
+                }
+                if (d.key.isNotEmpty())
+                {
+                    m["key"] = d.key.toStdString();
+                    m["keyConfidence"] = d.keyConfidence;
+
+                    // La relativa condivide le stesse note, e le stime di
+                    // tonalita' scivolano spesso fra le due: darla insieme
+                    // alla principale evita di far passare per certa una
+                    // scelta che il segnale non permette di fare.
+                    static const char* nomi[12] =
+                        { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+                    const bool minore = d.key.endsWith ("min");
+                    const juce::String tonica = d.key.upToFirstOccurrenceOf (" ", false, true);
+                    for (int i = 0; i < 12; ++i)
+                    {
+                        if (tonica != nomi[i]) continue;
+                        // Relativa minore: tre semitoni sotto. Maggiore: tre sopra.
+                        const int rel = minore ? (i + 3) % 12 : (i + 9) % 12;
+                        m["keyRelative"] = juce::String (nomi[rel]).toStdString()
+                                         + (minore ? " maj" : " min");
+                        break;
+                    }
+                }
+                m["riferimenti"]["confidenza"] = "sotto 0.3 il valore e' poco affidabile, non citarlo come certo";
+                m["riferimenti"]["tonalita"] = "la stima puo' cadere sulla relativa o sulla dominante: se la confidenza non e' alta, dilla come ipotesi";
 
                 nlohmann::json bande = nlohmann::json::array();
                 for (int b = 0; b < Analyzer::FFTData::numBands; ++b)

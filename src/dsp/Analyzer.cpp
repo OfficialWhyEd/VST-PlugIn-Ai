@@ -1,6 +1,7 @@
 #include "Analyzer.h"
 #include <cmath>
 #include <algorithm>
+#include <numeric>
 
 Analyzer::Analyzer() : fft(11)  // 2048-point FFT
 {
@@ -183,6 +184,200 @@ void Analyzer::updateLoudnessRange()
     currentData.loudnessRange = percentile (0.95) - percentile (0.10);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Tempo e tonalita'
+// ═══════════════════════════════════════════════════════════════════
+
+void Analyzer::updateOnsetEnvelope()
+{
+    const int bins = fftSize / 2;
+    if ((int) currentData.rawMagnitudes.size() < bins) return;
+
+    if ((int) previousMagnitudes.size() != bins)
+    {
+        previousMagnitudes.assign ((size_t) bins, 0.0f);
+        return;   // il primo frame non ha un precedente con cui confrontarsi
+    }
+
+    // Flusso spettrale a mezza onda: si sommano solo gli aumenti di
+    // energia. Le diminuzioni si scartano perche' un suono che si spegne
+    // non e' un attacco, e contarle riempirebbe l'inviluppo di rumore.
+    double flusso = 0.0;
+    for (int i = 1; i < bins; ++i)
+    {
+        const float delta = currentData.rawMagnitudes[(size_t) i] - previousMagnitudes[(size_t) i];
+        if (delta > 0.0f) flusso += delta;
+        previousMagnitudes[(size_t) i] = currentData.rawMagnitudes[(size_t) i];
+    }
+
+    onsetEnvelope.push_back ((float) flusso);
+
+    // Dieci secondi di storia: abbastanza per riconoscere un tempo lento
+    // senza tenere in memoria l'intero brano.
+    const double framesAlSecondo = sampleRate / (double) hopSize;
+    const size_t massimo = (size_t) (framesAlSecondo * 10.0);
+    while (onsetEnvelope.size() > massimo)
+        onsetEnvelope.pop_front();
+}
+
+void Analyzer::estimateTempo()
+{
+    // L'autocorrelazione costa: la si fa ogni due secondi circa, non a
+    // ogni frame. Il tempo di un brano non cambia cosi' in fretta.
+    const double framesAlSecondo = sampleRate / (double) hopSize;
+    if (++tempoUpdateCounter < (int) (framesAlSecondo * 2.0)) return;
+    tempoUpdateCounter = 0;
+
+    const size_t n = onsetEnvelope.size();
+    if (n < (size_t) (framesAlSecondo * 4.0)) return;   // meno di 4 s: troppo poco
+
+    std::vector<float> env (onsetEnvelope.begin(), onsetEnvelope.end());
+
+    // Si toglie la media: senza, l'autocorrelazione e' dominata dal livello
+    // assoluto e il picco cade sempre a ritardo zero.
+    const double media = std::accumulate (env.begin(), env.end(), 0.0) / (double) n;
+    for (auto& v : env) v -= (float) media;
+
+    // Si cercano solo i periodi che corrispondono a tempi musicali
+    // plausibili, fra 60 e 200 BPM.
+    const int ritardoMin = (int) (framesAlSecondo * 60.0 / 200.0);
+    const int ritardoMax = (int) (framesAlSecondo * 60.0 / 60.0);
+    if (ritardoMax >= (int) n || ritardoMin < 1) return;
+
+    double energia = 0.0;
+    for (float v : env) energia += (double) v * v;
+    if (energia < 1e-9) return;
+
+    std::vector<double> correlazioni ((size_t) (ritardoMax - ritardoMin + 1), 0.0);
+    double miglioreValore = 0.0;
+    int miglioreRitardo = 0;
+    for (int lag = ritardoMin; lag <= ritardoMax; ++lag)
+    {
+        double somma = 0.0;
+        for (size_t i = 0; i + (size_t) lag < n; ++i)
+            somma += (double) env[i] * env[i + (size_t) lag];
+
+        correlazioni[(size_t) (lag - ritardoMin)] = somma;
+        if (somma > miglioreValore)
+        {
+            miglioreValore = somma;
+            miglioreRitardo = lag;
+        }
+    }
+
+    if (miglioreRitardo <= 0) return;
+
+    // Il ritardo e' un numero intero di frame, e questo limita molto la
+    // precisione: a 170 BPM un frame in piu' o in meno sposta la stima di
+    // una decina di battiti. Interpolando una parabola sui tre punti
+    // attorno al massimo si recupera la posizione frazionaria del picco.
+    double ritardoFine = (double) miglioreRitardo;
+    const int idx = miglioreRitardo - ritardoMin;
+    if (idx > 0 && idx + 1 < (int) correlazioni.size())
+    {
+        const double y0 = correlazioni[(size_t) (idx - 1)];
+        const double y1 = correlazioni[(size_t) idx];
+        const double y2 = correlazioni[(size_t) (idx + 1)];
+        const double denom = y0 - 2.0 * y1 + y2;
+        if (std::abs (denom) > 1e-12)
+        {
+            const double offset = 0.5 * (y0 - y2) / denom;
+            if (std::abs (offset) <= 1.0)
+                ritardoFine += offset;
+        }
+    }
+
+    currentData.bpm = (float) (60.0 * framesAlSecondo / ritardoFine);
+    // Quanto il picco spicca rispetto all'energia totale: se il segnale non
+    // ha una pulsazione chiara il valore resta basso e chi legge lo sa.
+    currentData.bpmConfidence = (float) juce::jlimit (0.0, 1.0, miglioreValore / energia);
+}
+
+void Analyzer::estimateKey()
+{
+    const int bins = fftSize / 2;
+    if ((int) currentData.magnitudes.size() < bins) return;
+
+    const double binHz = sampleRate / fftSize;
+
+    // Ogni bin finisce nella sua classe di altezza. Si parte da 55 Hz
+    // (La1) e si sale: sotto, la risoluzione della FFT non basta a
+    // distinguere semitoni vicini.
+    for (int i = 1; i < bins; ++i)
+    {
+        const double f = i * binHz;
+        if (f < 55.0 || f > 5000.0) continue;
+
+        // 69 e' il numero MIDI del La440; il modulo 12 da' la classe.
+        const double midi = 69.0 + 12.0 * std::log2 (f / 440.0);
+        int classe = ((int) std::lround (midi)) % 12;
+        if (classe < 0) classe += 12;
+
+        const double e = (double) currentData.magnitudes[(size_t) i] * currentData.magnitudes[(size_t) i];
+        chromaAccumulator[(size_t) classe] += e;
+    }
+    chromaFrames += 1.0;
+
+    const double framesAlSecondo = sampleRate / (double) hopSize;
+    if (++keyUpdateCounter < (int) (framesAlSecondo * 2.0)) return;
+    keyUpdateCounter = 0;
+    if (chromaFrames < framesAlSecondo) return;   // meno di un secondo: presto
+
+    double totale = 0.0;
+    for (double v : chromaAccumulator) totale += v;
+    if (totale < 1e-12) return;
+
+    std::array<double, 12> profilo {};
+    for (size_t i = 0; i < 12; ++i)
+    {
+        profilo[i] = chromaAccumulator[i] / totale;
+        currentData.chroma[i] = (float) profilo[i];
+    }
+
+    // Profili di Krumhansl-Kessler: quanto pesa ogni grado della scala in
+    // musica tonale, ricavati da esperimenti di ascolto. Confrontando il
+    // chroma con questi, ruotati sulle dodici tonalita', si trova quella
+    // che somiglia di piu'.
+    static constexpr double maggiore[12] =
+        { 6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88 };
+    static constexpr double minore[12] =
+        { 6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17 };
+    static const char* nomi[12] =
+        { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+
+    const auto correlazione = [&profilo](const double* rif, int rotazione)
+    {
+        double mediaA = 0.0, mediaB = 0.0;
+        for (int i = 0; i < 12; ++i) { mediaA += profilo[(size_t) i]; mediaB += rif[i]; }
+        mediaA /= 12.0; mediaB /= 12.0;
+
+        double num = 0.0, denA = 0.0, denB = 0.0;
+        for (int i = 0; i < 12; ++i)
+        {
+            const double a = profilo[(size_t) ((i + rotazione) % 12)] - mediaA;
+            const double b = rif[i] - mediaB;
+            num += a * b; denA += a * a; denB += b * b;
+        }
+        return (denA > 0.0 && denB > 0.0) ? num / std::sqrt (denA * denB) : 0.0;
+    };
+
+    double migliore = -2.0;
+    int miglioreTonica = 0;
+    bool miglioreMinore = false;
+
+    for (int t = 0; t < 12; ++t)
+    {
+        const double cMag = correlazione (maggiore, t);
+        if (cMag > migliore) { migliore = cMag; miglioreTonica = t; miglioreMinore = false; }
+
+        const double cMin = correlazione (minore, t);
+        if (cMin > migliore) { migliore = cMin; miglioreTonica = t; miglioreMinore = true; }
+    }
+
+    currentData.key = juce::String (nomi[miglioreTonica]) + (miglioreMinore ? " min" : " maj");
+    currentData.keyConfidence = (float) juce::jlimit (0.0, 1.0, migliore);
+}
+
 void Analyzer::collectScopePoints (const juce::AudioBuffer<float>& buffer)
 {
     if (scopeBuffer.empty()) return;
@@ -288,6 +483,9 @@ void Analyzer::process(const juce::AudioBuffer<float>& buffer)
 
             computeSpectralShape();
             updateLoudnessRange();
+            updateOnsetEnvelope();
+            estimateTempo();
+            estimateKey();
 
             fifoIndex = 0;
             newData = true;

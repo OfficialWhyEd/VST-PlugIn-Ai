@@ -138,6 +138,10 @@ public:
     /** RMS reale e nuvola di punti del vectorscope, dal processBlock. */
     void updateScope(float rmsDb, const std::vector<float>& scopePoints);
 
+    /** Tempo e tonalita' stimati, con la rispettiva affidabilita'. */
+    void updateTempoAndKey(float bpm, float bpmConfidence,
+                           const juce::String& key, float keyConfidence);
+
     /** Riduzione di guadagno applicata dal compressore, in dB. */
     void updateGainReduction(float gainReductionDb) { lastGainReduction.store(gainReductionDb); }
 
@@ -269,6 +273,10 @@ private:
     std::atomic<int> lastClippingCount { 0 };
     std::atomic<float> lastRms { -96.0f };
     std::atomic<float> lastGainReduction { 0.0f };
+    std::atomic<float> lastBpm { 0.0f };
+    std::atomic<float> lastBpmConfidence { 0.0f };
+    std::atomic<float> lastKeyConfidence { 0.0f };
+    juce::String lastKey;   // protetta da spectrumLock
     std::vector<float> lastSpectrum;
     std::vector<float> lastScopePoints;
     juce::CriticalSection spectrumLock;

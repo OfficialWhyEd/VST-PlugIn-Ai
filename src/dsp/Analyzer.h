@@ -38,6 +38,14 @@ public:
         static constexpr int numBands = 10;
         std::array<float, numBands> bandEnergy {};
 
+        // Tempo e tonalita' stimati sul segnale che sta passando.
+        // Zero / stringa vuota finche' non c'e' abbastanza materiale.
+        float bpm = 0.0f;
+        float bpmConfidence = 0.0f;    // 0..1, quanto e' netto il periodo trovato
+        juce::String key;              // per esempio "F# min"
+        float keyConfidence = 0.0f;    // 0..1
+        std::array<float, 12> chroma {}; // energia per classe di altezza, da Do
+
         // Nuvola di punti per il vectorscope, gia' ruotata di 45 gradi:
         // x = side (L-R), y = mid (L+R), entrambi in -1..1. Interleaved
         // x,y,x,y... Sono i campioni veri decimati, non una figura
@@ -131,4 +139,29 @@ private:
     // secondo circa, tenuti per gli ultimi venti minuti.
     std::deque<float> shortTermHistory;
     int shortTermHistoryCounter = 0;
+
+    // ── Tempo e tonalita' ──────────────────────────────────────────
+    //
+    //  Entrambi si ricavano dallo spettro che gia' calcoliamo, senza
+    //  librerie esterne. Costano piu' delle altre misure, quindi non
+    //  girano a ogni frame: vedi i contatori qui sotto.
+
+    /** Accumula il flusso spettrale, cioe' quanto lo spettro cresce da un
+        frame al successivo: e' il segnale su cui si leggono gli attacchi. */
+    void updateOnsetEnvelope();
+
+    /** Cerca il periodo che si ripete nell'inviluppo degli attacchi e lo
+        traduce in battiti al minuto. */
+    void estimateTempo();
+
+    /** Somma l'energia per classe di altezza e confronta il risultato con
+        i profili di tonalita' maggiore e minore. */
+    void estimateKey();
+
+    std::vector<float> previousMagnitudes;   // per il flusso spettrale
+    std::deque<float> onsetEnvelope;         // un valore per hop
+    int tempoUpdateCounter = 0;
+    int keyUpdateCounter = 0;
+    std::array<double, 12> chromaAccumulator {};
+    double chromaFrames = 0.0;
 };
