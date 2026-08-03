@@ -11,7 +11,8 @@
 class OscBridgeTest : public juce::UnitTest
 {
 public:
-    OscBridgeTest() : juce::UnitTest ("OscBridgeTest", juce::UnitTestCategory::audio) {}
+    // juce::UnitTestCategory non esiste: la categoria e' una stringa.
+    OscBridgeTest() : juce::UnitTest ("OscBridgeTest", "whycremisi") {}
     
     void runTest() override
     {

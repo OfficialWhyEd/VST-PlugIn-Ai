@@ -414,6 +414,13 @@ void Analyzer::process(const juce::AudioBuffer<float>& buffer)
     int numSamples = buffer.getNumSamples();
     int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 
+    // Senza prepare() i buffer interni hanno dimensione zero e ogni accesso
+    // finisce fuori dai limiti. Un host che rispetta le regole chiama sempre
+    // prepareToPlay prima di processBlock, ma non tutti lo fanno in ogni
+    // situazione — e un plugin non deve andare in crash per questo.
+    if (fftSize <= 0 || (int) fifo[0].size() < fftSize)
+        return;
+
     // Update loudness and true peak for this buffer
     updateLoudness(buffer);
     detectTruePeak(buffer);

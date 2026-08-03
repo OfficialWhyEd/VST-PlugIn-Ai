@@ -26,6 +26,11 @@ void Limiter::process(juce::AudioBuffer<float>& buffer)
 {
     if (!enabled) return;
 
+    // Il buffer di lookahead esiste solo dopo prepare(): senza, ogni
+    // scrittura finisce fuori dai limiti.
+    if (delaySize <= 0 || delayBuffer.size() < 2)
+        return;
+
     int numSamples = buffer.getNumSamples();
     int numChannels = juce::jmin(buffer.getNumChannels(), 2);
 

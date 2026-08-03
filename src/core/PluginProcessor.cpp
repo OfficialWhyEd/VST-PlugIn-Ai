@@ -411,9 +411,19 @@ void WhyCremisiProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         {
             smoothedGain.setTargetValue(targetGain);
             if (!smoothedGain.isSmoothing())
+            {
                 buffer.applyGain(targetGain);
+            }
             else
-                buffer.applyGain(smoothedGain.getNextValue());
+            {
+                // applyGain avanza la rampa di un campione alla volta su
+                // tutto il buffer. Prima qui c'era getNextValue(), che la
+                // faceva avanzare di un solo campione per blocco e poi
+                // applicava quel valore a tutti: una rampa di 100 ms
+                // impiegava piu' di cento secondi a completarsi, e il gain
+                // sembrava non rispondere.
+                smoothedGain.applyGain(buffer, buffer.getNumSamples());
+            }
         }
         else
         {

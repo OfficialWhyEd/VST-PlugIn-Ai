@@ -181,21 +181,101 @@ target_include_directories(WhyCremisiVSTPlugin PRIVATE
 # ==============================================================================
 option(BUILD_UNIT_TESTS "Build C++ unit tests" OFF)
 if(BUILD_UNIT_TESTS)
-    # Unit test for PluginProcessor
-    juce_add_unit_test(PluginProcessorTest
-        SOURCES
+    # Un solo eseguibile che raccoglie tutti i juce::UnitTest e li esegue.
+    #
+    # Prima qui c'era juce_add_unit_test, una funzione che JUCE non ha mai
+    # avuto: con BUILD_UNIT_TESTS=ON la configurazione falliva subito. Dato
+    # che l'opzione e' spenta di default, nessuno se n'era accorto e i test
+    # non erano mai stati eseguiti nemmeno una volta.
+    juce_add_console_app(WhyCremisiTests
+        PRODUCT_NAME "WhyCremisiTests"
+    )
+
+    target_sources(WhyCremisiTests
+        PRIVATE
+            src/tests/TestRunner.cpp
             src/core/tests/PluginProcessorTest.cpp
-    )
-    
-    # Unit test for OscBridge
-    juce_add_unit_test(OscBridgeTest
-        SOURCES
             src/bridge/tests/OscBridgeTest.cpp
+            # I test istanziano il processore vero, quindi serve tutto cio'
+            # da cui dipende: il plugin non e' una libreria separata.
+            src/core/PluginProcessor.cpp
+            src/core/PluginEditor.cpp
+            src/core/SessionManager.cpp
+            src/core/ParameterMapper.cpp
+            src/core/PluginChain.cpp
+            src/agent/AgentIdentity.cpp
+            src/agent/AgentSoul.cpp
+            src/agent/AgentUser.cpp
+            src/agent/AgentWorkspace.cpp
+            src/agent/PersonalityCore.cpp
+            src/osc/OscHandler.cpp
+            src/ai/AiEngine.cpp
+            src/ai/AIProvider.cpp
+            src/ai/ToolRegistry.cpp
+            src/ui/WebViewBridge.cpp
+            src/bridge/WebSocketServer.cpp
+            src/bridge/OscBridge.cpp
+            src/midi/MidiHandler.cpp
+            src/dsp/EQBand.cpp
+            src/dsp/Compressor.cpp
+            src/dsp/Limiter.cpp
+            src/dsp/Analyzer.cpp
+            src/dsp/DSPEngine.cpp
+            src/daw/ReaperDawHandler.cpp
+            src/daw/AbletonDawHandler.cpp
+            src/daw/DawDetector.cpp
     )
-    
-    # Link the unit tests with the main plugin target so they can access its classes
-    target_link_libraries(PluginProcessorTest PRIVATE WhyCremisiVSTPlugin)
-    target_link_libraries(OscBridgeTest PRIVATE WhyCremisiVSTPlugin)
+
+    target_include_directories(WhyCremisiTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/osc
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ai
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/midi
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/daw
+    )
+
+    target_compile_definitions(WhyCremisiTests PRIVATE
+        JUCE_UNIT_TESTS=1
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        # Il processore vuole i simboli JucePlugin_*: senza, non compila
+        # fuori dal target del plugin.
+        JucePlugin_Name="WhyCremisi"
+        JucePlugin_IsSynth=0
+        JucePlugin_WantsMidiInput=1
+        JucePlugin_ProducesMidiOutput=1
+        JucePlugin_IsMidiEffect=0
+    )
+
+    if(WIN32)
+        target_compile_options(WhyCremisiTests PRIVATE /utf-8)
+        target_compile_definitions(WhyCremisiTests PRIVATE JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1)
+        # PluginEditor.cpp usa il resource provider della WebView, quindi
+        # anche i test hanno bisogno degli header di WebView2. Il plugin li
+        # riceve da NEEDS_WEBVIEW2; qui il collegamento va fatto a mano.
+        if(TARGET juce::juce_webview2)
+            target_link_libraries(WhyCremisiTests PRIVATE juce::juce_webview2)
+        endif()
+    endif()
+
+    target_link_libraries(WhyCremisiTests
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_dsp
+            juce::juce_audio_devices
+            juce::juce_audio_processors
+            juce::juce_audio_formats
+            juce::juce_audio_basics
+            juce::juce_gui_basics
+            juce::juce_gui_extra
+            juce::juce_graphics
+            juce::juce_core
+            juce::juce_data_structures
+            juce::juce_events
+    )
 endif()
 
 # ==============================================================================
