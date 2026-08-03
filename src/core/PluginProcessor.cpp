@@ -288,14 +288,15 @@ void WhyCremisiProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     currentSampleRate = sampleRate;
     currentBufferSize = samplesPerBlock;
     
+    // Sempre attivo anche in Release: e' la build che gira nel DAW.
     auto logToFile = [](const juce::String& msg) {
         DBG(msg);
-#ifndef NDEBUG
-        juce::File logFile = whycremisi::debugLogFile();
-        juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
-        logFile.appendText("[" + timestamp + "] " + msg + "\n");
-#endif
+        whycremisi::log ("plugin", msg);
     };
+
+    whycremisi::logSessionStart ("caricato a " + juce::String (sampleRate, 0)
+                                 + " Hz, blocchi da " + juce::String (samplesPerBlock)
+                                 + " campioni, host: " + juce::PluginHostType().getHostDescription());
     
     logToFile("[WhyCremisi] prepareToPlay called");
     

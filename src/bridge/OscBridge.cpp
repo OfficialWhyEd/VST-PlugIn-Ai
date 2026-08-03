@@ -1247,8 +1247,68 @@ void OscBridge::dispatchDawCommand(const nlohmann::json& payload)
     }
     else if (command == "applyEQ")
     {
-        if (payload.contains("freq") && payload.contains("gain"))
-            sendOscToDaw("/whycremisi/eq_apply", 1.0f);
+        // Prima questo comando spediva "/whycremisi/eq_apply" al DAW con un
+        // 1.0 fisso, buttando via frequenza e guadagno: il pulsante del box
+        // dei suggerimenti diceva "applicato" e non toccava niente.
+        // Ora scrive davvero su una banda dell'EQ interno.
+        auto* dsp = getDspEngine();
+        if (! dsp || dsp->eqBands.empty())
+            return;
+
+        const float gain = payload.contains("gain") && payload["gain"].is_number()
+                         ? payload["gain"].get<float>() : 0.0f;
+
+        // La frequenza puo' arrivare come numero oppure come intervallo
+        // testuale tipo "200Hz-400Hz": in quel caso si prende il centro
+        // geometrico, che e' il modo giusto di stare in mezzo fra due
+        // frequenze — la media aritmetica sposta il punto verso l'acuto.
+        float freq = 1000.0f;
+        if (payload.contains("freq"))
+        {
+            if (payload["freq"].is_number())
+            {
+                freq = payload["freq"].get<float>();
+            }
+            else if (payload["freq"].is_string())
+            {
+                const juce::String testo (payload["freq"].get<std::string>());
+                const float lo = testo.upToFirstOccurrenceOf ("-", false, true)
+                                     .retainCharacters ("0123456789.").getFloatValue();
+                const float hi = testo.fromLastOccurrenceOf ("-", false, true)
+                                     .retainCharacters ("0123456789.").getFloatValue();
+                if (lo > 0.0f && hi > lo) freq = std::sqrt (lo * hi);
+                else if (lo > 0.0f)       freq = lo;
+            }
+        }
+
+        const float q = payload.contains("q") && payload["q"].is_number()
+                      ? payload["q"].get<float>() : 1.4f;
+
+        // Si sceglie una banda libera, altrimenti la prima: cosi' due
+        // suggerimenti su frequenze diverse non si sovrascrivono.
+        EQBand* banda = nullptr;
+        for (auto& b : dsp->eqBands)
+            if (b && std::abs (b->getGain()) < 0.01f) { banda = b.get(); break; }
+        if (! banda) banda = dsp->eqBands[0].get();
+        if (! banda) return;
+
+        banda->setType (EQBand::Type::Peak);
+        banda->setFrequency (freq);
+        banda->setQ (q);
+        banda->setGain (gain);
+        banda->setEnabled (true);
+        applyDspBypass (DSPEngine::EqModule, false);
+
+        log ("[DSP] EQ: " + juce::String (freq, 0) + " Hz, "
+             + juce::String (gain, 1) + " dB, Q " + juce::String (q, 2));
+
+        nlohmann::json rp;
+        rp["type"] = "dsp.eqApplied";
+        rp["payload"]["freq"] = freq;
+        rp["payload"]["gain"] = gain;
+        rp["payload"]["q"] = q;
+        broadcastJson (rp);
+        broadcastDspState();
     }
     else if (command == "eqAnalyze")
     {
@@ -2848,9 +2908,9 @@ juce::String OscBridge::generateUUID()
 void OscBridge::log(const juce::String& msg)
 {
     DBG("[OscBridge] " + msg);
-#ifndef NDEBUG
-    juce::File logFile = whycremisi::debugLogFile();
-    juce::String timestamp = juce::Time::getCurrentTime().toString(true, true, true, true);
-    logFile.appendText("[" + timestamp + "] " + msg + "\n");
-#endif
+    // Scrive sempre, anche in Release: e' la versione che gira nel DAW, ed
+    // e' proprio li' che serve sapere cosa e' successo. Prima queste righe
+    // stavano dietro #ifndef NDEBUG e durante una prova vera il file
+    // restava vuoto.
+    whycremisi::log ("bridge", msg);
 }

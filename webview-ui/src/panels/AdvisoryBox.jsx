@@ -1,109 +1,165 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import BoxWrapper from './shared/BoxWrapper'
+
+// Il tono cambia con la personalità dell'agente, il colore lo segue.
+const TONI = {
+  direct:       { colore: '#DC143C', priorita: 'Critico',      azione: 'Applica' },
+  consultative: { colore: '#FFB000', priorita: 'Consigliato',  azione: 'Rivedi e applica' },
+  analytical:   { colore: '#00E5FF', priorita: 'Rilevato',     azione: 'Applica' },
+  creative:     { colore: '#AA44FF', priorita: 'Da esplorare', azione: 'Prova' },
+  warm:         { colore: '#66FF88', priorita: 'Suggerito',    azione: 'Applica' },
+}
+
+// Curva di uscita esponenziale: parte decisa e si posa, invece di arrivare
+// a velocità costante come farebbe un ease-in-out.
+const POSA = [0.16, 1, 0.3, 1]
 
 export default function AdvisoryBox({ suggestion, personality, onDawCmd, onAnalyzeFurther }) {
-  const [advDismissed, setAdvDismissed] = useState(false)
-  const [advExecuted, setAdvExecuted] = useState(false)
+  const [chiuso, setChiuso] = useState(false)
+  const [applicato, setApplicato] = useState(false)
 
-  if (advDismissed) return null
+  // Nessun suggerimento, nessun riquadro. Prima qui c'era un consiglio
+  // inventato — 200-400 Hz, −2,4 dB, confidenza 98,2% — che compariva
+  // anche quando l'AI non aveva detto niente, e il pulsante lo applicava.
+  if (chiuso || !suggestion) return null
 
-  const s = suggestion || { freqLow: 200, freqHigh: 400, gainDb: -2.4, label: '200Hz-400Hz', description: 'harmonic crowding', transientPres: 84, confidence: 0.982 }
-  const advColor = personality?.style === 'direct' ? '#DC143C' :
-    personality?.style === 'consultative' ? '#FFB000' :
-    personality?.style === 'analytical' ? '#00E5FF' :
-    personality?.style === 'creative' ? '#AA44FF' : '#66FF88'
-  const priorityLabel = personality?.style === 'direct' ? 'Critical' :
-    personality?.style === 'consultative' ? 'Advisory' :
-    personality?.style === 'analytical' ? 'Info' :
-    personality?.style === 'creative' ? 'Exploratory' : 'Suggested'
-  const actionLabel = personality?.style === 'direct' ? 'FORCE APPLY CHAIN' :
-    personality?.style === 'consultative' ? 'REVIEW & APPLY' :
-    personality?.style === 'analytical' ? 'SIMULATE CHAIN' :
-    personality?.style === 'creative' ? 'EXPLORE ALTERNATIVES' : 'APPLY SUGGESTED CHAIN'
-  const confidenceTag = `CONF: ${(s.confidence * 100).toFixed(0)}%`
-  const styleName = personality?.style?.toUpperCase() || 'DEFAULT'
-  const freqLabel = `${s.freqLow}Hz-${s.freqHigh}Hz`
+  const s = suggestion
+  const tono = TONI[personality?.style] || TONI.warm
+  const { colore } = tono
+
+  const bandaTesto = s.freqLow && s.freqHigh
+    ? `${s.freqLow}–${s.freqHigh} Hz`
+    : (s.label || '')
+  const guadagno = typeof s.gainDb === 'number' ? s.gainDb : null
+  // La confidenza si mostra solo se l'ha davvero fornita chi suggerisce.
+  const confidenza = typeof s.confidence === 'number' ? Math.round(s.confidence * 100) : null
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0)' }}
-      transition={{ delay: 0.35, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="mt-2 animate-advisory-in group relative"
+      initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      transition={{ duration: 0.55, ease: POSA }}
+      className="mt-2"
     >
-      <div className="absolute -top-3 -right-1 opacity-5 pointer-events-none select-none">
-        <pre className="text-xs leading-tight text-white font-mono">0x45 0x21 0x88{'\n'}[TRANS_LOCK]{'\n'}0xFF 0x00 0x12</pre>
-      </div>
-      <div className="advisory-card advisory-breathe bg-[#121212] p-4 relative font-mono transition-all duration-500 hover:bg-[#161616]"
-        style={{ borderColor: advColor + '66' }}
+      {/* Scocca esterna e nucleo interno: due raggi concentrici, come una
+          piastra montata dentro una cornice. Il bordo colorato dice a colpo
+          d'occhio con che tono sta parlando l'agente. */}
+      <div
+        className="rounded-[18px] p-[3px] transition-colors duration-500"
+        style={{ background: `linear-gradient(160deg, ${colore}26, transparent 60%)` }}
       >
-        <div className="absolute top-2 right-3 flex items-end gap-[2px] h-5 opacity-40">
-          {[40, 70, 55, 90, 65].map((h, i) => (
-            <div key={i} className="w-[2px]" style={{ height: h + '%', backgroundColor: advColor }} />
-          ))}
-        </div>
-        <div className="flex justify-between items-start mb-3 border-b border-[#222] pb-2">
-          <div className="flex items-center gap-2">
-            <div className="w-1 h-5 relative overflow-hidden flex-shrink-0" style={{ backgroundColor: advColor }}>
-              <motion.div className="absolute inset-0 bg-white/20" animate={{ y: ['0%', '100%', '0%'] }} transition={{ repeat: Infinity, duration: 2 }} />
+        <div
+          className="relative rounded-[15px] bg-[#101010] overflow-hidden"
+          style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 24px -12px ${colore}55` }}
+        >
+          {/* Filo di luce lungo il bordo superiore: nasce dal colore del tono */}
+          <div
+            className="absolute inset-x-0 top-0 h-px"
+            style={{ background: `linear-gradient(90deg, transparent, ${colore}, transparent)` }}
+          />
+
+          <div className="p-4">
+            {/* Intestazione: la banda è il soggetto, il resto è contorno */}
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <div
+                  className="text-[9px] font-bold uppercase tracking-[0.18em] mb-1"
+                  style={{ color: colore }}
+                >
+                  {tono.priorita}
+                </div>
+                <h3 className="text-white font-bold leading-none tracking-tight text-[20px]">
+                  {bandaTesto}
+                </h3>
+                {s.description && (
+                  <p className="text-[11px] text-[#8a8a8a] mt-1.5 leading-snug">
+                    {s.description}
+                  </p>
+                )}
+              </div>
+
+              {/* La correzione proposta, grande quanto la sua importanza */}
+              {guadagno !== null && (
+                <div className="text-right flex-shrink-0">
+                  <div
+                    className="font-mono font-bold leading-none text-[26px] tabular-nums"
+                    style={{ color: colore }}
+                  >
+                    {guadagno > 0 ? '+' : ''}{guadagno.toFixed(1)}
+                  </div>
+                  <div className="text-[9px] text-[#6f6f6f] uppercase tracking-[0.16em] mt-1">
+                    dB
+                  </div>
+                </div>
+              )}
             </div>
-            <div>
-              <span className="text-xs font-bold tracking-tighter uppercase block" style={{ color: advColor }}>
-                AI_MASTERING_ADVISORY_{styleName}
-              </span>
-              <span className="text-xs text-[#888888] tracking-widest">
-                NODE: CREMISI_X9 . STYLE: {styleName} . {freqLabel}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end">
-            <span className="text-xs text-white/40 font-bold uppercase tracking-widest">Priority: <span style={{ color: advColor }}>{priorityLabel}</span></span>
-            {personality?.experienceLevel && (
-              <span className="text-xs text-[#888888] font-mono mt-0.5">EXP LVL: {personality.experienceLevel}</span>
+
+            {/* Dettagli veri, e solo quelli che ci sono davvero */}
+            {(confidenza !== null || typeof s.transientPres === 'number') && (
+              <div className="flex items-center gap-4 mb-3.5 text-[10px] font-mono text-[#7a7a7a]">
+                {confidenza !== null && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-8 h-[3px] rounded-full bg-white/10 overflow-hidden">
+                      <motion.span
+                        className="block h-full rounded-full"
+                        style={{ backgroundColor: colore }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${confidenza}%` }}
+                        transition={{ duration: 0.7, ease: POSA, delay: 0.15 }}
+                      />
+                    </span>
+                    confidenza {confidenza}%
+                  </span>
+                )}
+                {typeof s.transientPres === 'number' && (
+                  <span>transienti {s.transientPres}%</span>
+                )}
+              </div>
             )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => {
+                  setApplicato(true)
+                  onDawCmd('applyEQ', {
+                    freq: s.freqLow && s.freqHigh ? `${s.freqLow}-${s.freqHigh}` : s.label,
+                    gain: guadagno,
+                  })
+                }}
+                disabled={applicato || guadagno === null}
+                className="group inline-flex items-center gap-2 rounded-full pl-4 pr-1.5 py-1.5 text-[11px] font-bold tracking-tight transition-all duration-500 disabled:opacity-100"
+                style={applicato
+                  ? { backgroundColor: '#0f2b1f', color: '#66FF88' }
+                  : { backgroundColor: colore, color: '#0a0a0a' }}
+              >
+                {applicato ? 'Applicato' : tono.azione}
+                <span
+                  className="w-6 h-6 rounded-full flex items-center justify-center transition-transform duration-500 group-hover:translate-x-0.5"
+                  style={{ backgroundColor: applicato ? '#66FF8822' : 'rgba(0,0,0,0.18)' }}
+                >
+                  <span className="material-symbols-outlined text-[13px]">
+                    {applicato ? 'check' : 'arrow_forward'}
+                  </span>
+                </span>
+              </motion.button>
+
+              <button
+                className="rounded-full px-3.5 py-1.5 text-[11px] font-semibold text-[#9a9a9a] transition-colors duration-300 hover:text-white"
+                style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }}
+                onClick={() => onAnalyzeFurther && onAnalyzeFurther(personality?.style)}
+              >
+                Approfondisci
+              </button>
+
+              <button
+                className="ml-auto text-[11px] text-[#6f6f6f] transition-colors duration-300 hover:text-[#9a9a9a]"
+                onClick={() => setChiuso(true)}
+              >
+                Ignora
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="text-sm leading-relaxed text-[#FFB000] mb-3">
-          <p className="text-xs leading-relaxed">
-            {personality?.style === 'direct' ? 'Aggressive ' : personality?.style === 'consultative' ? 'Potential ' : personality?.style === 'creative' ? 'Creative ' : 'Detected '}
-            {s.description} in{' '}
-            <span className="text-white font-bold px-0.5" style={{ borderBottom: '1px solid ' + advColor + '66' }}>{freqLabel}</span>.{' '}
-            {personality?.style === 'direct' ? 'Applying surgical dip of' :
-             personality?.style === 'consultative' ? 'Consider gentle dip of' :
-             personality?.style === 'analytical' ? 'Recommended dynamic dip of' :
-             personality?.style === 'creative' ? 'Exploring experimental sculpting of' :
-             'Suggesting gentle dip of'}{' '}
-            <span className="text-white px-1 font-bold" style={{ backgroundColor: advColor }}>{s.gainDb}dB</span>.{' '}
-            Transient preservation at{' '}
-            <span className="text-white underline decoration-dotted">{s.transientPres}%</span>.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 mb-3 text-xs font-mono text-[#666] opacity-60">
-          <span>HEX: {advColor}</span><span>.</span><span>VAL: {s.gainDb}dB_COR</span><span>.</span><span>{confidenceTag}</span><span>.</span><span>LAT: 0.2ms</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <motion.button
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }}
-            onClick={() => { setAdvExecuted(true); onDawCmd('applyEQ', { freq: freqLabel, gain: s.gainDb }) }}
-            style={advExecuted ? { backgroundColor: '#00FFaa', color: '#000', border: '1px solid #00FFaa' } : { backgroundColor: advColor, color: '#fff' }}
-            className="relative px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition-all"
-          >
-            <span className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[12px]">bolt</span>
-              {advExecuted ? 'APPLIED' : actionLabel}
-            </span>
-          </motion.button>
-          <motion.button
-            className="border border-[#4d4d4d] text-[#888888] px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:border-[#FFB000] hover:text-[#FFB000] hover:shadow-[0_0_15px_rgba(255,176,0,0.2)] transition-all"
-            whileTap={{ scale: 0.95 }}
-            onClick={() => onAnalyzeFurther && onAnalyzeFurther(personality?.style)}
-          >
-            ANALYZE FURTHER
-          </motion.button>
-          <button className="text-[#888888] hover:text-white text-xs font-bold uppercase self-center transition-colors hover:underline"
-            style={{ textDecorationColor: advColor }}
-            onClick={() => setAdvDismissed(true)}>DISMISS</button>
         </div>
       </div>
     </motion.div>
