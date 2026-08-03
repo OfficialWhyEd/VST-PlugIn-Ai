@@ -125,6 +125,23 @@ public:
     // ha gia' Claude non deve incollare niente. Stringa vuota se non c'e'.
     static juce::String detectSubscriptionToken();
 
+    // Percorso dell'eseguibile di Claude Code, se installato. Vuoto altrimenti.
+    // Cerchiamo il programma, non i suoi file di credenziali.
+    static juce::File findClaudeCodeExecutable();
+
+    // Esito del collegamento dell'account tramite Claude Code.
+    struct LinkResult
+    {
+        bool ok = false;
+        juce::String token;    // vuoto se non riuscito
+        juce::String message;  // spiegazione leggibile per la UI
+    };
+
+    // Chiede a Claude Code di emettere un token per l'uso da programmi terzi
+    // ("claude setup-token"). L'utente approva nel browser: e' un consenso
+    // esplicito, non un prelievo di segreti dal disco.
+    static LinkResult linkAccountViaClaudeCode();
+
     // true quando l'autenticazione avviene con un abbonamento Claude invece
     // che con una chiave API.
     bool usesSubscription() const { return config.authToken.isNotEmpty(); }

@@ -66,6 +66,9 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
   const [subscriptionDetected, setSubscriptionDetected] = useState(null)
   // Modelli riportati dal fornitore, quando li sa dire lui.
   const [modelliVivi, setModelliVivi] = useState(null)
+  // Claude Code installato: permette il collegamento con un clic.
+  const [claudeCodePresente, setClaudeCodePresente] = useState(false)
+  const [collegamento, setCollegamento] = useState(null) // null | 'corso' | 'fatto' | messaggio d'errore
   const unsubRef = useRef(null)
   const timeoutsRef = useRef([])
 
@@ -112,9 +115,20 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
     const unsub = whycremisi.on('config.response', (payload) => {
       if (payload?.key !== 'ai.detectSubscription') return
       setSubscriptionDetected(!!payload.found)
+      setClaudeCodePresente(!!payload.claudeCode)
+    })
+    const unsubLink = whycremisi.on('config.response', (payload) => {
+      if (payload?.key !== 'ai.linkClaude') return
+      if (payload.linked) {
+        setSubscriptionDetected(true)
+        setCollegamento('fatto')
+      } else {
+        // Il motivo va detto: un pulsante che torna com'era non spiega niente.
+        setCollegamento(payload.message || 'Collegamento non riuscito.')
+      }
     })
     whycremisi.send({ type: 'config.set', payload: { key: 'ai.detectSubscription' } })
-    return unsub
+    return () => { unsub(); unsubLink() }
   }, [isClaude])
 
   const providers = [
@@ -300,6 +314,32 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                         <p className="text-[8px] text-[#00E5FF] font-mono">
                           Abbonamento rilevato sulla macchina — nessuna chiave da inserire.
                         </p>
+                      ) : claudeCodePresente ? (
+                        // Claude Code c'è: un clic e basta. Chiedere a qualcuno
+                        // di procurarsi un token da solo significa perderlo.
+                        <>
+                          <button
+                            type="button"
+                            disabled={collegamento === 'corso'}
+                            onClick={() => {
+                              setCollegamento('corso')
+                              whycremisi.send({ type: 'config.set', payload: { key: 'ai.linkClaude' } })
+                            }}
+                            className="group w-full flex items-center justify-between gap-2 bg-white text-black px-3 py-2 rounded-full disabled:opacity-60 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
+                          >
+                            <span className="text-[10px] font-medium tracking-tight">
+                              {collegamento === 'corso' ? 'Approva nel browser…' : 'Collega il mio account Claude'}
+                            </span>
+                            <span className="w-5 h-5 rounded-full bg-black/5 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:-translate-y-[1px]">
+                              <span className="text-[9px]">↗</span>
+                            </span>
+                          </button>
+                          <p className="text-[7px] text-[#555] leading-tight mt-1">
+                            {collegamento && collegamento !== 'corso' && collegamento !== 'fatto'
+                              ? collegamento
+                              : 'Claude Code è installato: si apre il browser, approvi, e non devi incollare nulla.'}
+                          </p>
+                        </>
                       ) : (
                         <>
                           <input
@@ -311,7 +351,7 @@ export function SetupScreen({ onComplete, onSkip, initialConfig = {} }) {
                           />
                           <p className="text-[7px] text-[#555] leading-tight mt-0.5">
                             {subscriptionDetected === false
-                              ? 'Nessun abbonamento trovato. Imposta ANTHROPIC_AUTH_TOKEN, oppure incolla il token qui.'
+                              ? 'Nessun abbonamento trovato. Installa Claude Code per collegarlo con un clic, oppure incolla il token qui.'
                               : 'Ricerca di un abbonamento già presente…'}
                           </p>
                         </>

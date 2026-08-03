@@ -2061,7 +2061,47 @@ void OscBridge::dispatchConfig(const nlohmann::json& payload, const juce::String
         rp["key"] = "ai.detectSubscription";
         rp["status"] = "ok";
         rp["found"] = token.isNotEmpty();
+        // Se non c'e' un token ma Claude Code e' installato, si puo' ancora
+        // offrire il collegamento con un clic invece di un campo vuoto.
+        rp["claudeCode"] = AnthropicProvider::findClaudeCodeExecutable().existsAsFile();
         // Il token non torna mai indietro: alla UI basta sapere che c'e'.
+        sendConfigResponse(rp);
+    }
+    else if (configKey == "ai.linkClaude")
+    {
+        // Un clic solo: Claude Code apre il browser, l'utente approva, il
+        // token torna qui gia' autorizzato per l'uso da programmi terzi.
+        // Non si chiede all'utente di incollare niente.
+        auto esito = AnthropicProvider::linkAccountViaClaudeCode();
+
+        if (esito.ok && aiEngine)
+        {
+            aiEngine->updateConfig([&esito](AiEngine::Config& cfg)
+            {
+                cfg.authToken = esito.token;
+                cfg.apiKey = {};
+                cfg.provider = AiEngine::Provider::Anthropic;
+                if (cfg.model.isEmpty() || ! cfg.model.startsWith ("claude-"))
+                    cfg.model = AnthropicProvider::defaultModel();
+            });
+
+            // Conservato a parte, fuori dalle impostazioni: cosi' resta
+            // valido fra un avvio e l'altro senza doverlo riemettere.
+            auto f = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                         .getChildFile ("WhyCremisi").getChildFile ("accesso-claude.txt");
+            f.getParentDirectory().createDirectory();
+            f.replaceWithText (esito.token);
+        }
+
+        log("[AUTH] Collegamento Claude Code: " + juce::String(esito.ok ? "riuscito" : "fallito")
+            + " - " + esito.message);
+
+        nlohmann::json rp;
+        rp["key"] = "ai.linkClaude";
+        rp["status"] = esito.ok ? "ok" : "error";
+        rp["linked"] = esito.ok;
+        rp["message"] = esito.message.toStdString();
+        // Anche qui il token resta dentro: la UI non deve mai vederlo.
         sendConfigResponse(rp);
     }
     else if (configKey == "ai.effort")

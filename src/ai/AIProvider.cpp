@@ -304,7 +304,121 @@ juce::String AnthropicProvider::detectSubscriptionToken()
     // o della CLI: sono segreti di un altro programma, con una struttura che
     // puo' cambiare, e un plugin audio non ha motivo di frugarci dentro.
     auto fromEnv = juce::SystemStats::getEnvironmentVariable ("ANTHROPIC_AUTH_TOKEN", {});
-    return fromEnv.trim();
+    if (fromEnv.trim().isNotEmpty())
+        return fromEnv.trim();
+
+    // Token gia' emesso e conservato da noi in un collegamento precedente.
+    // E' roba nostra, non di un altro programma: qui possiamo guardare.
+    auto salvato = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                       .getChildFile ("WhyCremisi").getChildFile ("accesso-claude.txt");
+    if (salvato.existsAsFile())
+        return salvato.loadFileAsString().trim();
+
+    return {};
+}
+
+juce::File AnthropicProvider::findClaudeCodeExecutable()
+{
+    // Cerchiamo il programma, non i suoi segreti: sapere che Claude Code
+    // c'e' basta per offrire il collegamento con un clic.
+   #if JUCE_WINDOWS
+    const char* nomi[] = { "claude.exe", "claude.cmd", "claude.bat" };
+   #else
+    const char* nomi[] = { "claude" };
+   #endif
+
+    // Posti dove finisce di solito l'installazione, prima del PATH: e' piu'
+    // veloce e non dipende da come e' configurata la shell dell'utente.
+    const auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+    juce::Array<juce::File> cartelle {
+        home.getChildFile (".local").getChildFile ("bin"),
+        home.getChildFile (".claude").getChildFile ("local"),
+        home.getChildFile ("AppData").getChildFile ("Local").getChildFile ("Programs")
+    };
+
+    for (const auto& dir : cartelle)
+        for (auto* n : nomi)
+            if (auto f = dir.getChildFile (n); f.existsAsFile())
+                return f;
+
+    // Poi il PATH, voce per voce.
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PATH", {});
+   #if JUCE_WINDOWS
+    auto voci = juce::StringArray::fromTokens (path, ";", "\"");
+   #else
+    auto voci = juce::StringArray::fromTokens (path, ":", "\"");
+   #endif
+
+    for (const auto& voce : voci)
+    {
+        if (voce.trim().isEmpty()) continue;
+        for (auto* n : nomi)
+            if (auto f = juce::File (voce.trim()).getChildFile (n); f.existsAsFile())
+                return f;
+    }
+
+    return {};
+}
+
+AnthropicProvider::LinkResult AnthropicProvider::linkAccountViaClaudeCode()
+{
+    LinkResult r;
+
+    const auto exe = findClaudeCodeExecutable();
+    if (! exe.existsAsFile())
+    {
+        r.message = "Claude Code non risulta installato su questa macchina.";
+        return r;
+    }
+
+    // "setup-token" e' il comando che Claude Code espone apposta per emettere
+    // un token destinato a programmi terzi. Passiamo di qui, e non dal file
+    // delle credenziali, per due motivi: quel file appartiene a un altro
+    // programma e la sua forma puo' cambiare senza preavviso, e soprattutto
+    // il token che contiene e' emesso per Claude Code, non per noi. Qui
+    // invece l'utente approva nel browser e il token nasce autorizzato.
+    juce::ChildProcess proc;
+    if (! proc.start (exe.getFullPathName().quoted() + " setup-token",
+                      juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
+    {
+        r.message = "Non sono riuscito ad avviare Claude Code.";
+        return r;
+    }
+
+    // L'utente deve approvare nel browser: il tempo lo detta lui, non noi.
+    const auto uscita = proc.readAllProcessOutput();
+    proc.waitForProcessToFinish (300000);
+
+    // Il token si riconosce dal prefisso; l'uscita contiene anche istruzioni
+    // e righe di cortesia che qui non servono.
+    for (const auto& riga : juce::StringArray::fromLines (uscita))
+    {
+        const auto t = riga.trim();
+        const auto inizio = t.indexOf ("sk-ant-");
+        if (inizio < 0) continue;
+
+        auto token = t.substring (inizio);
+        // Taglia la punteggiatura o il testo attaccato subito dopo il token.
+        int fine = 0;
+        while (fine < token.length()
+               && (juce::CharacterFunctions::isLetterOrDigit (token[fine])
+                   || token[fine] == '-' || token[fine] == '_'))
+            ++fine;
+        token = token.substring (0, fine);
+
+        if (token.length() > 20)
+        {
+            r.ok = true;
+            r.token = token;
+            r.message = "Account Claude collegato.";
+            return r;
+        }
+    }
+
+    r.message = uscita.containsIgnoreCase ("login")
+              ? "Claude Code chiede prima l'accesso: aprilo una volta e riprova."
+              : "Claude Code non ha restituito un token.";
+    return r;
 }
 
 juce::String AnthropicProvider::displayNameFor (const juce::String& modelId)
